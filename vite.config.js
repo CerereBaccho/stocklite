@@ -1,6 +1,10 @@
-export default {
-  server: {
-    host: '0.0.0.0',
-    allowedHosts: [ process.env[ 'REPLIT_DOMAINS' ].split( ',' )[0]]
+// vite.config.js 〈フル置換〉
+import { defineConfig } from 'vite';
+
+export default defineConfig({
+  base: '/stocklite/',          // ← ここが超重要（/リポ名/）
+  build: {
+    outDir: 'docs',             // ← GitHub Pages の公開フォルダに合わせる
+    emptyOutDir: true
   }
-}
+});

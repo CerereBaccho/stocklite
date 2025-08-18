@@ -1,4 +1,4 @@
-run = "npm run dev"
+run = "npm run build && vite preview"
 entrypoint = "main.js"
 
 hidden = [".config", ".gitignore"]
@@ -16,5 +16,17 @@ build = ["npm", "run", "build"]
 publicDir = "dist"
 
 [[ports]]
+localPort = 3001
+externalPort = 3002
+
+[[ports]]
+localPort = 4173
+externalPort = 3001
+
+[[ports]]
 localPort = 5173
 externalPort = 80
+
+[[ports]]
+localPort = 5174
+externalPort = 3000

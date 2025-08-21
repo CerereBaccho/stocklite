@@ -1,4 +1,4 @@
-run = "npm run build && vite preview"
+run = "bash scripts/push.sh"
 entrypoint = "main.js"
 
 hidden = [".config", ".gitignore"]

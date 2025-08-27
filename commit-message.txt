@@ -1,1 +1,1 @@
-テスト
+deploy: add .nojekyll & show BUILD_TAG in DIAG (cache bust)

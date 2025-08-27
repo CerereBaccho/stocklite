@@ -2,6 +2,9 @@
 declare global { interface Window { OneSignal: any } }
 window.OneSignal = window.OneSignal || [];
 
+// ←← ここが今回の「更新確認用」ビルドタグ（適当に更新してOK）
+const BUILD_TAG = "build: 2025-08-09 12:34 JST";
+
 function isFn(x: any): x is Function { return typeof x === "function"; }
 
 // OneSignal 初期化（GitHub Pagesのサブパス対応）
@@ -23,32 +26,16 @@ function initOneSignal() {
 // 手動で許可UIを出す（Slidedown→新API→旧API→ネイティブの順）
 async function promptPushManually() {
   try {
-    // Slidedown
-    if (window.OneSignal?.Slidedown?.promptPush) {
-      await window.OneSignal.Slidedown.promptPush();
-      return;
-    }
+    if (window.OneSignal?.Slidedown?.promptPush) { await window.OneSignal.Slidedown.promptPush(); return; }
   } catch {}
   try {
-    // v16+ API
-    if (window.OneSignal?.Notifications?.requestPermission) {
-      await window.OneSignal.Notifications.requestPermission();
-      return;
-    }
+    if (window.OneSignal?.Notifications?.requestPermission) { await window.OneSignal.Notifications.requestPermission(); return; }
   } catch {}
   try {
-    // 旧API
-    if (window.OneSignal?.registerForPushNotifications) {
-      await window.OneSignal.registerForPushNotifications();
-      return;
-    }
+    if (window.OneSignal?.registerForPushNotifications) { await window.OneSignal.registerForPushNotifications(); return; }
   } catch {}
   try {
-    // 最後の手段：ブラウザAPI直叩き（iOS iPWAs でも granted なら有効）
-    if ("Notification" in window && isFn((Notification as any).requestPermission)) {
-      await Notification.requestPermission();
-      return;
-    }
+    if ("Notification" in window && isFn((Notification as any).requestPermission)) { await (Notification as any).requestPermission(); return; }
   } catch {}
 }
 
@@ -66,7 +53,6 @@ async function renderDiag() {
       subscribed = String(window.OneSignal.User.PushSubscription.optedIn);
       osInitDone = true;
     } else if (window.OneSignal?.isPushNotificationsEnabled) {
-      // 旧API
       subscribed = String(await window.OneSignal.isPushNotificationsEnabled());
       osInitDone = true;
     }
@@ -81,6 +67,7 @@ async function renderDiag() {
 
   box.textContent =
 `[DIAG]
+${BUILD_TAG}
 origin: ${origin}
 pathname: ${pathname}
 Notification.permission: ${perm}
@@ -141,7 +128,6 @@ async function renderUI() {
   root.querySelectorAll<HTMLButtonElement>(".plus").forEach(btn=>{
     if (!navigator.onLine) { btn.disabled = true; return; }
     btn.onclick = async (e)=>{
-      // ここでは自動プロンプトは呼ばない（手動ボタンで明示的に）
       const id = (e.currentTarget as HTMLElement).closest(".card")!.getAttribute("data-id")!;
       await storage.adjustQty(id, +1);
       renderUI(); renderDiag();
@@ -169,10 +155,8 @@ async function renderUI() {
   btn.addEventListener("click", async () => {
     await promptPushManually();
     await renderDiag();
-    // 許可済みならテスト通知（任意）
     try {
       if (typeof Notification !== "undefined" && Notification.permission === "granted") {
-        // iOS でも new Notification は通らないことがあるので SW 経由も試す
         try { new Notification("StockLite", { body: "ローカル通知テスト" }); } catch {}
         try {
           const regs = await navigator.serviceWorker.getRegistrations();

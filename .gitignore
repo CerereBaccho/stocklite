@@ -1,6 +1,18 @@
-node_modules
-dev-dist
-.vscode
+# Node
+node_modules/
+npm-debug.log*
+pnpm-debug.log*
+yarn-debug.log*
+.yarn/
+.pnp.*
+
+# OS
 .DS_Store
-# dist は GitHub Pages の公開物なので無視しない
+
+# ローカル運用メモ（リポジトリには載せない）
+DECISIONS.md
+RUNBOOK.md
+commit-message.txt
+
+# 注意: dist は GitHub Pages で使うので ignore しない
 # dist/

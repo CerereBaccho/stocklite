@@ -2,45 +2,36 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>StockLite</title>
 
-    <!-- CSS -->
+    <!-- Vite (docs直出し構成) -->
 
-    <!-- PWA系（相対パスに変更：/ 先頭だと GitHub Pages のサブパスで壊れる） -->
+    <!-- PWA/manifest（public/→docs直下へコピーされる） -->
     <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#ffffff" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-    <!-- ?clean=1 でこの一度だけ SW を全解除してリロード（キャッシュ固着対策） -->
-    <script>
-      (async () => {
-        const p = new URL(location.href).searchParams;
-        if (p.get('clean') === '1' && 'serviceWorker' in navigator) {
-          try {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            for (const r of regs) await r.unregister();
-            // OneSignalの登録済みワーカー名も明示的に消しておく
-            if (navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({type:'SKIP_WAITING'});
-            }
-          } catch (e) {}
-          // クエリを外してリロード
-          const u = new URL(location.href); u.searchParams.delete('clean');
-          location.replace(u.toString());
-        }
-      })();
-    </script>
-    <script type="module" crossorigin src="/stocklite/assets/index-CIWpKp0N.js"></script>
+    <!-- OneSignal SDK -->
+    <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.page.js" defer></script>
+
+    <style>
+      /* 診断＆手動許可ボタン（後で消してOK） */
+      .toolbar{position:sticky;top:0;z-index:100;background:#f7f7fb;border-bottom:1px solid #e6e6ef;padding:8px 12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+      .toolbar button{padding:8px 10px;border:1px solid #ccc;border-radius:8px;background:#fff}
+      .diag{font:12px ui-monospace,Menlo,Consolas,monospace;white-space:pre-wrap;background:#fafafa;border-top:1px dashed #ddd;padding:10px}
+    </style>
+    <script type="module" crossorigin src="/stocklite/assets/index-BIh2U5JG.js"></script>
     <link rel="stylesheet" crossorigin href="/stocklite/assets/index-Bcp2BOW8.css">
   </head>
   <body>
-    <div id="app"></div>
+    <div class="toolbar">
+      <button id="enable-push">通知を有効にする（手動）</button>
+      <span id="perm-badge"></span>
+    </div>
 
-    <!-- エントリ -->
-    <!-- OneSignal SDK -->
-    <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.page.js" defer></script>
+    <div id="app"></div>
+    <div id="diag" class="diag"></div>
+
   </body>
 </html>

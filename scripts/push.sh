@@ -1,72 +1,51 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-# ===== 設定（必要なら Secrets で上書き）=====
-: "${GIT_USER:=replit-bot}"
-: "${GIT_EMAIL:=replit-bot@users.noreply.github.com}"
-: "${GITHUB_USER:=CerereBaccho}"
-: "${GITHUB_REPO:=stocklite}"
-BRANCH="${1:-main}"
-MSG_FILE="commit-message.txt"
-# ============================================
+BRANCH="main"
+REPO="https://x-access-token:${GH_PAT}@github.com/CerereBaccho/stocklite.git"
 
-# Git ユーザー設定（未設定なら入れる）
-git config user.name  "${GIT_USER}"  >/dev/null
-git config user.email "${GIT_EMAIL}" >/dev/null
+# 1) Git の基本設定（未設定なら）
+git config user.name  >/dev/null 2>&1 || git config user.name  "replit-bot"
+git config user.email >/dev/null 2>&1 || git config user.email "replit-bot@users.noreply.github.com"
 
-# 変更なしなら終了
-if [[ -z "$(git status --porcelain)" ]]; then
-  echo "No changes to commit."
-  exit 0
-fi
-
-# すべてステージ
-git add -A
-
-# コミットメッセージ決定
-msg=""
-if [[ -f "$MSG_FILE" ]]; then
-  msg="$(sed -e 's/^[[:space:]]*//' -e 's/[[:space:]]*$//' "$MSG_FILE")"
-fi
-if [[ -z "$msg" ]]; then
-  changed="$(git diff --cached --name-status | awk '{print $1 ":" $2}' | tr '\n' ', ' | sed 's/, $//')"
-  now="$(date '+%Y-%m-%d %H:%M')"
-  msg="chore: update ${now}"
-  if [[ -n "$changed" ]]; then
-    msg="${msg} — ${changed}"
-  fi
-fi
-
-# コミット（何も変化してなければ抜ける）
-git commit -m "$msg" || { echo "Nothing to commit after stage."; exit 0; }
-
-# ===== PAT の準備 =====
-if [[ -z "${GH_PAT:-}" ]]; then
-  echo "ERROR: Replit Secrets に GH_PAT がありません。追加してから再実行してください。"
-  exit 1
-fi
-
-# 既存の origin を保存
-ORIG_URL="$(git remote get-url origin 2>/dev/null || true)"
-# PAT 埋め込みURLへ“一時的に”切替（ログに出さない）
-PAT_URL="https://x-access-token:${GH_PAT}@github.com/${GITHUB_USER}/${GITHUB_REPO}.git"
-git remote set-url origin "${PAT_URL}"
-
-# upstream の変更を先に取り込む（衝突時はここで止めて手動解決）
-git fetch origin "${BRANCH}" || true
-if git rev-parse --verify "origin/${BRANCH}" >/dev/null 2>&1; then
-  git pull --rebase origin "${BRANCH}" || true
-fi
-
-# push（初回は -u で upstream も設定）
-git push -u origin "${BRANCH}"
-
-# origin を元に戻す（PAT が .git に残らないように）
-if [[ -n "${ORIG_URL}" ]]; then
-  git remote set-url origin "${ORIG_URL}"
+# 2) リモートURLを必ず PAT 版に統一
+if git remote | grep -q "^origin$"; then
+  git remote set-url origin "$REPO"
 else
-  git remote set-url origin "https://github.com/${GITHUB_USER}/${GITHUB_REPO}.git"
+  git remote add origin "$REPO"
 fi
 
-echo "✅ Pushed with message:"
-echo "$msg"
+# 3) 先に最新を取り込む（ここが今回のreject対策）
+git fetch origin "$BRANCH" || true
+# PAT を確実に使わせるため -c で helper を無効化
+git -c credential.helper= pull --rebase origin "$BRANCH" || true
+
+# 4) ビルド（必要なら依存解決）
+if [ ! -d node_modules ]; then
+  npm ci --silent --no-audit --no-fund || npm install
+fi
+npm run build
+
+# 5) Pages 用の追加ファイル（/dist を公開する運用のまま）
+#   ※ Pages の公開フォルダは「/(dist)」のままでOK
+touch dist/.nojekyll
+date -u +"%Y-%m-%dT%H:%M:%SZ" > dist/build.txt
+
+# 6) コミットメッセージ（ファイルがあればそれを使う）
+if [ -f commit-message.txt ]; then
+  MSG=$(cat commit-message.txt)
+else
+  MSG="deploy: publish dist to GitHub Pages"
+fi
+
+# 7) 変更をコミット & プッシュ
+git add -A
+# 変更が無い時は commit をスキップして push だけ
+if git diff --cached --quiet; then
+  echo "[push.sh] No changes to commit. Pushing anyway (after rebase)…"
+else
+  git commit -m "$MSG"
+fi
+
+git -c credential.helper= push origin "$BRANCH"
+echo "[push.sh] Done. Pushed to $BRANCH."

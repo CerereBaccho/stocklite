@@ -1,1 +1,1 @@
-deploy: add .nojekyll & show BUILD_TAG in DIAG (cache bust)
+deploy: publish dist to GitHub Pages

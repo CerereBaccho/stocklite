@@ -1,28 +1,100 @@
-// ---- OneSignal: 初回タップ時にだけ許可を促す ----
-let asked = false;
-async function askPushOnce() {
-  if (asked) return; asked = true;
+// ====== OneSignal 手動許可 & 診断ユーティリティ ======
+declare global { interface Window { OneSignal: any } }
+window.OneSignal = window.OneSignal || [];
+
+function isFn(x: any): x is Function { return typeof x === "function"; }
+
+// OneSignal 初期化（GitHub Pagesのサブパス対応）
+function initOneSignal() {
+  return new Promise<void>((resolve) => {
+    window.OneSignal.push(() => {
+      window.OneSignal.init({
+        appId: "8e78387b-2f78-4458-907e-938de4df59f6", // ←置換
+        serviceWorkerPath: '/stocklite/OneSignalSDKWorker.js',
+        serviceWorkerUpdaterPath: '/stocklite/OneSignalSDKUpdaterWorker.js',
+        serviceWorkerParam: { scope: '/stocklite/' },
+        promptOptions: { slidedown: { enabled: false } } // 自動出現はOFF、手動で叩く
+      });
+      resolve();
+    });
+  });
+}
+
+// 手動で許可UIを出す（Slidedown→新API→旧API→ネイティブの順）
+async function promptPushManually() {
   try {
-    // Slidedown → 新API → 旧API の順でフォールバック
-    // @ts-ignore
+    // Slidedown
     if (window.OneSignal?.Slidedown?.promptPush) {
-      // @ts-ignore
-      await window.OneSignal.Slidedown.promptPush(); return;
+      await window.OneSignal.Slidedown.promptPush();
+      return;
     }
-    // @ts-ignore
+  } catch {}
+  try {
+    // v16+ API
     if (window.OneSignal?.Notifications?.requestPermission) {
-      // @ts-ignore
-      await window.OneSignal.Notifications.requestPermission(); return;
+      await window.OneSignal.Notifications.requestPermission();
+      return;
     }
-    // @ts-ignore
+  } catch {}
+  try {
+    // 旧API
     if (window.OneSignal?.registerForPushNotifications) {
-      // @ts-ignore
-      await window.OneSignal.registerForPushNotifications(); return;
+      await window.OneSignal.registerForPushNotifications();
+      return;
+    }
+  } catch {}
+  try {
+    // 最後の手段：ブラウザAPI直叩き（iOS iPWAs でも granted なら有効）
+    if ("Notification" in window && isFn((Notification as any).requestPermission)) {
+      await Notification.requestPermission();
+      return;
     }
   } catch {}
 }
 
-// ---- アプリ本体（在庫UI） ----
+// 画面内に診断情報を描画（iPhoneでコンソール見にくい対策）
+async function renderDiag() {
+  const box = document.getElementById("diag")!;
+  const perm = (typeof Notification !== "undefined" && "permission" in Notification) ? Notification.permission : "n/a";
+  const origin = location.origin;
+  const pathname = location.pathname;
+  let onesignalLoaded = !!window.OneSignal;
+  let osInitDone = false;
+  let subscribed = "n/a";
+  try {
+    if (window.OneSignal?.User?.PushSubscription?.optedIn != null) {
+      subscribed = String(window.OneSignal.User.PushSubscription.optedIn);
+      osInitDone = true;
+    } else if (window.OneSignal?.isPushNotificationsEnabled) {
+      // 旧API
+      subscribed = String(await window.OneSignal.isPushNotificationsEnabled());
+      osInitDone = true;
+    }
+  } catch {}
+
+  // SW一覧
+  let swLines: string[] = [];
+  try {
+    const regs = await navigator.serviceWorker?.getRegistrations?.() ?? [];
+    swLines = regs.map(r => `- scope: ${r.scope}`);
+  } catch {}
+
+  box.textContent =
+`[DIAG]
+origin: ${origin}
+pathname: ${pathname}
+Notification.permission: ${perm}
+OneSignal loaded: ${onesignalLoaded}
+OneSignal initDone: ${osInitDone}
+Subscribed: ${subscribed}
+SW registrations:
+${swLines.length ? swLines.join("\n") : "- (none)"}
+`;
+  const badge = document.getElementById("perm-badge")!;
+  badge.textContent = `権限: ${perm}`;
+}
+
+// ====== 在庫アプリ（既存） ======
 import { seedIfEmpty, storage } from "./storage/db";
 import { PRESETS } from "./presets";
 
@@ -51,7 +123,7 @@ function cardHTML(it: any) {
   </div>`;
 }
 
-async function render() {
+async function renderUI() {
   const root = document.getElementById("app")!;
   const items = await storage.getItems();
   const groups: Record<string, any[]> = { "キッチン": [], "洗面・トイレ": [] };
@@ -69,39 +141,44 @@ async function render() {
   root.querySelectorAll<HTMLButtonElement>(".plus").forEach(btn=>{
     if (!navigator.onLine) { btn.disabled = true; return; }
     btn.onclick = async (e)=>{
-      await askPushOnce(); // ← 初回だけ許可誘導
+      // ここでは自動プロンプトは呼ばない（手動ボタンで明示的に）
       const id = (e.currentTarget as HTMLElement).closest(".card")!.getAttribute("data-id")!;
       await storage.adjustQty(id, +1);
-      render();
+      renderUI(); renderDiag();
     };
   });
   root.querySelectorAll<HTMLButtonElement>(".minus").forEach(btn=>{
     if (!navigator.onLine) { btn.disabled = true; return; }
     btn.onclick = async (e)=>{
-      await askPushOnce(); // ← 初回だけ許可誘導
       const id = (e.currentTarget as HTMLElement).closest(".card")!.getAttribute("data-id")!;
       await storage.adjustQty(id, -1);
-      render();
+      renderUI(); renderDiag();
     };
   });
 }
 
-// ---- OneSignal 初期化（App ID 必須 / サブパス対応）----
-declare global { interface Window { OneSignal: any } }
-window.OneSignal = window.OneSignal || [];
-window.OneSignal.push(function () {
-  window.OneSignal.init({
-    appId: "8e78387b-2f78-4458-907e-938de4df59f6", // ←置換
-    // GitHub Pages(プロジェクト公開)のサブパスに合わせる
-    serviceWorkerPath: '/stocklite/OneSignalSDKWorker.js',
-    serviceWorkerUpdaterPath: '/stocklite/OneSignalSDKUpdaterWorker.js',
-    serviceWorkerParam: { scope: '/stocklite/' },
-    promptOptions: { slidedown: { enabled: true } }
-  });
-});
-
-// ---- 起動 ----
+// ====== 起動フロー ======
 (async () => {
   await seedIfEmpty(PRESETS);
-  await render();
+  await initOneSignal();
+  await renderUI();
+  await renderDiag();
+
+  // 手動許可ボタン
+  const btn = document.getElementById("enable-push")!;
+  btn.addEventListener("click", async () => {
+    await promptPushManually();
+    await renderDiag();
+    // 許可済みならテスト通知（任意）
+    try {
+      if (typeof Notification !== "undefined" && Notification.permission === "granted") {
+        // iOS でも new Notification は通らないことがあるので SW 経由も試す
+        try { new Notification("StockLite", { body: "ローカル通知テスト" }); } catch {}
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          if (regs[0]) regs[0].showNotification("StockLite", { body: "SW通知テスト" });
+        } catch {}
+      }
+    } catch {}
+  });
 })();

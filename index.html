@@ -5,23 +5,45 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StockLite</title>
 
-    <!-- PWA manifest（※先頭スラッシュを外して相対に） -->
+    <!-- PWA -->
     <link rel="manifest" href="manifest.json" />
     <meta name="theme-color" content="#ffffff" />
-
-    <!-- iOS ホーム追加用アイコン（相対） -->
     <link rel="apple-touch-icon" href="apple-touch-icon.png" />
 
-    <!-- OneSignal SDK（defer推奨） -->
+    <!-- OneSignal SDK -->
     <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.page.js" defer></script>
 
-    <!-- CSS（相対） -->
+    <!-- App CSS -->
     <link rel="stylesheet" href="src/style.css" />
+
+    <style>
+      /* 許可ボタン・診断用の簡易UI（必要になければ後で消せます） */
+      .toolbar {
+        position: sticky; top: 0; z-index: 100;
+        padding: 8px 12px; background:#f7f7fb; border-bottom:1px solid #e6e6ef;
+        display:flex; gap:8px; align-items:center; flex-wrap:wrap;
+      }
+      .toolbar button {
+        padding: 8px 10px; font-size:14px; border:1px solid #ccc; border-radius:8px; background:#fff;
+      }
+      .diag {
+        font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+        font-size: 12px; white-space: pre-wrap; background:#fafafa; border-top:1px dashed #ddd;
+        padding:10px; color:#333;
+      }
+      .hide { display:none; }
+    </style>
   </head>
   <body>
-    <div id="app"></div>
+    <div class="toolbar">
+      <button id="enable-push">通知を有効にする（手動）</button>
+      <span id="perm-badge"></span>
+    </div>
 
-    <!-- エントリ（相対） -->
+    <div id="app"></div>
+    <div id="diag" class="diag"></div>
+
+    <!-- エントリ -->
     <script type="module" src="src/main.ts"></script>
   </body>
 </html>

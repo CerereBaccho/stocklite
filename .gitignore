@@ -1,18 +1,10 @@
-# Node
 node_modules/
-npm-debug.log*
-pnpm-debug.log*
-yarn-debug.log*
-.yarn/
-.pnp.*
-
-# OS
+dev-dist/
+dist/
+.env
+.DS_Storenode_modules/
+.vite/
+dist/
 .DS_Store
-
-# ローカル運用メモ（リポジトリには載せない）
-DECISIONS.md
-RUNBOOK.md
-commit-message.txt
-
-# 注意: dist は GitHub Pages で使うので ignore しない
-# dist/
+.env
+.env.*.local

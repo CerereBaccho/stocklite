@@ -1,7 +1,10 @@
-// vite.config.js
-import { defineConfig } from 'vite'
+// vite.config.js（全文）
+import { defineConfig } from 'vite';
 
-// GitHub Pages (project pages) は /<repo>/ 配下で配信されるので base を必ず設定
 export default defineConfig({
-  base: '/stocklite/',  // ← リポジトリ名に合わせる
-})
+  base: '/stocklite/',   // GitHub Pages のサブパス
+  build: {
+    outDir: 'docs',      // 直接 docs に出力
+    emptyOutDir: false,  // 既存の docs を全部消したくない場合は false（そのまま）
+  },
+});

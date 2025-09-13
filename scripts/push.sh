@@ -1,50 +1,36 @@
 #!/usr/bin/env bash
-set -Eeuo pipefail
-
-# リポジトリ直下に移動（どこから呼んでも安全）
-cd "$(dirname "$0")/.."
-
-# Git の安全設定と自動 rebase/autostash
-git config --global --add safe.directory "$(pwd)"
-git config pull.rebase true
-git config rebase.autoStash true
-
-# PAT があれば、常に PAT URL を使う（GH_PAT は Replit Secrets）
-if [[ -n "${GH_PAT:-}" ]]; then
-  git remote set-url origin "https://x-access-token:${GH_PAT}@github.com/CerereBacchio/stocklite.git"
-fi
+set -euo pipefail
 
 echo "==> Sync with remote (pull --rebase, autostash)…"
-# 未ステージ変更があっても自動で退避して rebase する
-git add -A || true
-git pull --rebase || true
+git -c rebase.autoStash=true pull --rebase || true
 
-echo "==> Build (tsc && vite build)…"
+echo "==> Build (vite → outDir=docs)…"
 npm run build
 
-echo "==> Prepare dist artifacts…"
-touch dist/.nojekyll
-date -Iseconds > dist/build.txt
+echo "==> Prepare docs artifacts…"
+date -u +"%Y-%m-%dT%H:%M:%SZ" > docs/build.txt
+touch docs/.nojekyll
 
-echo "==> Commit dist only…"
-git add -A dist
-
-MSG_FILE="commit-message.txt"
-if [[ -s "$MSG_FILE" ]]; then
-  MSG="$(cat "$MSG_FILE")"
-else
-  MSG="deploy: publish dist to GitHub Pages"
+echo "==> Commit docs only…"
+COMMIT_MSG_FILE="commit-message.txt"
+if [ ! -s "$COMMIT_MSG_FILE" ]; then
+  echo "deploy: publish docs to GitHub Pages" > "$COMMIT_MSG_FILE"
 fi
-
-# 変更があるときだけコミット
-git diff --cached --quiet || git commit -m "$MSG"
+git add -A docs
+# 変更がない場合はスキップ
+if git diff --cached --quiet; then
+  echo "no changes in docs; skip commit/push."
+  exit 0
+fi
+git commit -F "$COMMIT_MSG_FILE"
 
 echo "==> Push…"
-BRANCH="$(git rev-parse --abbrev-ref HEAD)"
-if ! git push -u origin "$BRANCH"; then
-  echo "==> Push rejected; syncing and retrying once…"
-  git pull --rebase || true
-  git push -u origin "$BRANCH"
+if git push -u origin main; then
+  echo "push success."
+  exit 0
 fi
 
-echo "✅ Done."
+echo "==> Push rejected; syncing and retrying once…"
+git -c rebase.autoStash=true pull --rebase
+git push -u origin main
+echo "done."

@@ -121,7 +121,7 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
 }
 
 /* ▼ 追加：フィールド共通ラッパーとラベル */
-.field{ display:flex; flex-direction:column; }
+.field{ display:flex; flex-direction:column; width:100%; }
 .field-label{
   font-size:12px; color:var(--muted);
   margin: 2px 2px 6px;

@@ -9,7 +9,7 @@
 import './style.css';
 
 import type { Item } from './storage/Storage';
-import { CATEGORIES } from './storage/Storage';
+import { CATEGORIES, addCategory } from './storage/Storage';
 import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
 import { nowISO } from './utils/time';
 import { initPushIfNeeded } from './push/onesignal';
@@ -133,9 +133,30 @@ function numberInput(value: number, min = 0) {
 function textInput(value = '') {
   return el('input', { type: 'text', value }) as HTMLInputElement;
 }
+function populateCategoryOptions(sel: HTMLSelectElement, selected: string) {
+  sel.textContent = '';
+  for (const c of CATEGORIES) {
+    sel.append(el('option', { value: c, textContent: c, selected: c === selected }));
+  }
+  sel.append(el('option', { value: '__add__', textContent: 'カテゴリを追加…' }));
+}
 function categorySelect(value: Item['category']) {
   const sel = el('select', { className: 'ed-cat' }) as HTMLSelectElement;
-  for (const c of CATEGORIES) sel.append(el('option', { value: c, textContent: c, selected: c === value }));
+  populateCategoryOptions(sel, value);
+  sel.addEventListener('change', () => {
+    if (sel.value === '__add__') {
+      const name = prompt('新しいカテゴリ名');
+      if (name && name.trim()) {
+        addCategory(name);
+        populateCategoryOptions(sel, name.trim());
+        document.querySelectorAll('select.ed-cat').forEach(s => {
+          if (s !== sel) populateCategoryOptions(s as HTMLSelectElement, (s as HTMLSelectElement).value);
+        });
+      } else {
+        populateCategoryOptions(sel, value);
+      }
+    }
+  });
   return sel;
 }
 function fieldWrap(
@@ -180,6 +201,7 @@ function renderEditRow(it: Item) {
       threshold: parseInt((thI as HTMLInputElement).value || '0', 10),
       updatedAt: nowISO(),
     };
+    addCategory(updated.category);
     await saveItem(updated);
     await renderEdit();
   });
@@ -227,6 +249,7 @@ function renderAddRow() {
       deleted: false,
       version: 1,
     };
+    addCategory(newItem.category);
     await saveItem(newItem);
 
     (nameI as HTMLInputElement).value = '';

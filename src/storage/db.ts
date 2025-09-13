@@ -1,13 +1,21 @@
 // src/storage/db.ts
 import type { Item } from './Storage';
+import { PRESETS } from '../presets';
 
 const LS_KEY = 'stocklite/items';
 
 const read = (): Item[] => {
-  try { return JSON.parse(localStorage.getItem(LS_KEY) || '[]'); }
-  catch { return []; }
+  try {
+    return JSON.parse(localStorage.getItem(LS_KEY) || '[]');
+  } catch {
+    return [];
+  }
 };
 const write = (items: Item[]) => localStorage.setItem(LS_KEY, JSON.stringify(items));
+
+export const seedIfEmpty = () => {
+  if (read().length === 0) write(PRESETS);
+};
 
 export const loadAll = (): Item[] => read();
 

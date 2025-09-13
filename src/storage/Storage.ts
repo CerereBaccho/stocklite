@@ -1,6 +1,6 @@
 // src/storage/Storage.ts
-export const CATEGORIES = ['キッチン', '洗面・トイレ'] as const;
-export type Category = (typeof CATEGORIES)[number];
+export const DEFAULT_CATEGORIES = ['キッチン', '洗面・トイレ'];
+export type Category = string;
 
 export type Item = {
   id: string;

@@ -9,8 +9,8 @@
 import './style.css';
 
 import type { Item } from './storage/Storage';
-import { CATEGORIES } from './storage/Storage';
-import { loadAll, saveItem, removeItem } from './storage/db';
+import { DEFAULT_CATEGORIES } from './storage/Storage';
+import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
 import { nowISO } from './utils/time';
 import { initPushIfNeeded } from './push/onesignal';
 
@@ -39,6 +39,12 @@ function uuid(): string {
 
 function jaSortByName(a: Item, b: Item): number {
   return a.name.localeCompare(b.name, 'ja');
+}
+
+function getCategories(items: Item[]): string[] {
+  const set = new Set(DEFAULT_CATEGORIES);
+  for (const it of items) set.add(it.category);
+  return Array.from(set);
 }
 
 // ---------- 閲覧画面 ----------
@@ -99,8 +105,9 @@ async function renderList() {
   root.append(renderListHeader());
 
   const all = (await Promise.resolve(loadAll())).filter(i => !i.deleted);
+  const cats = getCategories(all);
   // カテゴリごと・名前順
-  for (const cat of CATEGORIES) {
+  for (const cat of cats) {
     const items = all.filter(i => i.category === cat).sort(jaSortByName);
     if (!items.length) continue;
 
@@ -133,18 +140,42 @@ function numberInput(value: number, min = 0) {
 function textInput(value = '') {
   return el('input', { type: 'text', value }) as HTMLInputElement;
 }
-function categorySelect(value: Item['category']) {
+function categorySelect(categories: string[], value: string) {
   const sel = el('select', { className: 'ed-cat' }) as HTMLSelectElement;
-  for (const c of CATEGORIES) sel.append(el('option', { value: c, textContent: c, selected: c === value }));
+  for (const c of categories) sel.append(el('option', { value: c, textContent: c, selected: c === value }));
+  sel.append(el('option', { value: '__new', textContent: '＋新規カテゴリ' }));
+  const reset = () => { sel.value = categories.includes(value) ? value : categories[0] || ''; };
+  sel.addEventListener('change', () => {
+    if (sel.value !== '__new') return;
+    const name = prompt('カテゴリ名');
+    if (name) {
+      categories.push(name);
+      sel.insertBefore(el('option', { value: name, textContent: name }), sel.lastElementChild!);
+      sel.value = name;
+    } else {
+      reset();
+    }
+  });
   return sel;
 }
-function fieldWrap(label: string, child: HTMLElement, cls: string) {
-  return el('div', { className: `field ${cls}` }, el('div', { className: 'field-label', textContent: label }), child);
+function fieldWrap(
+  label: string,
+  child: HTMLElement,
+  cls: string,
+  note?: string,
+) {
+  return el(
+    'div',
+    { className: `field ${cls}` },
+    el('div', { className: 'field-label', textContent: label }),
+    child,
+    note ? el('div', { className: 'field-note', textContent: note }) : null,
+  );
 }
 
-function renderEditRow(it: Item) {
+function renderEditRow(it: Item, categories: string[]) {
   const nameI = textInput(it.name);
-  const catS  = categorySelect(it.category);
+  const catS  = categorySelect(categories, it.category);
   const qtyI  = numberInput(it.qty, 0);
   const thI   = numberInput(it.threshold, 0);
 
@@ -155,7 +186,7 @@ function renderEditRow(it: Item) {
     fieldWrap('名前', nameI, 'ed-name'),
     fieldWrap('カテゴリ', catS, 'ed-cat'),
     fieldWrap('個数', qtyI, 'ed-qty'),
-    fieldWrap('閾値（この数以下で要補充）', thI, 'ed-th'),
+    fieldWrap('閾値', thI, 'ed-th', 'この数以下で要補充'),
     el('div', { className: 'save' }, btnSave),
     el('div', { className: 'del'  }, btnDel),
   );
@@ -164,7 +195,7 @@ function renderEditRow(it: Item) {
     const updated: Item = {
       ...it,
       name: (nameI as HTMLInputElement).value.trim(),
-      category: (catS as HTMLSelectElement).value as Item['category'],
+      category: (catS as HTMLSelectElement).value,
       qty: parseInt((qtyI as HTMLInputElement).value || '0', 10),
       threshold: parseInt((thI as HTMLInputElement).value || '0', 10),
       updatedAt: nowISO(),
@@ -181,9 +212,9 @@ function renderEditRow(it: Item) {
   return row;
 }
 
-function renderAddRow() {
+function renderAddRow(categories: string[]) {
   const nameI = textInput('');
-  const catS  = categorySelect(CATEGORIES[0]);
+  const catS  = categorySelect(categories, categories[0] || '');
   const qtyI  = numberInput(0, 0);
   const thI   = numberInput(1, 0);
 
@@ -194,7 +225,7 @@ function renderAddRow() {
     fieldWrap('（新規）名前', nameI, 'ed-name'),
     fieldWrap('カテゴリ',     catS,  'ed-cat'),
     fieldWrap('個数',         qtyI,  'ed-qty'),
-    fieldWrap('閾値（この数以下で要補充）', thI, 'ed-th'),
+    fieldWrap('閾値',         thI,  'ed-th', 'この数以下で要補充'),
     el('div', { className: 'save' }, btnAdd),
     el('div', { className: 'del'  }, btnClear),
   );
@@ -206,7 +237,7 @@ function renderAddRow() {
     const newItem: Item = {
       id: uuid(),
       name,
-      category: (catS as HTMLSelectElement).value as Item['category'],
+      category: (catS as HTMLSelectElement).value,
       qty: parseInt((qtyI as HTMLInputElement).value || '0', 10),
       threshold: parseInt((thI as HTMLInputElement).value || '0', 10),
       lastRefillAt: '',
@@ -236,17 +267,25 @@ function renderAddRow() {
 async function renderEdit() {
   const root = $('#app')!;
   root.textContent = '';
+  const items = (await Promise.resolve(loadAll())).filter(i => !i.deleted);
+  const categories = getCategories(items);
+  items.sort((a, b) =>
+    a.category === b.category
+      ? jaSortByName(a, b)
+      : categories.indexOf(a.category) - categories.indexOf(b.category),
+  );
 
   root.append(
     renderEditHeader(),
     el('div', { className: 'edit-panel' },
-      renderAddRow(),
-      el('div', { className: 'edit-list' },
-        ...(await Promise.resolve(loadAll()))
-          .filter(i => !i.deleted)
-          .sort((a, b) => (a.category === b.category ? jaSortByName(a, b) : CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category)))
-          .map(renderEditRow)
-      )
+      el('h3', { className: 'section-title', textContent: '新規追加' }),
+      renderAddRow(categories),
+      items.length
+        ? el('h3', { className: 'section-title', textContent: '既存アイテム' })
+        : null,
+      items.length
+        ? el('div', { className: 'edit-list' }, ...items.map(it => renderEditRow(it, categories)))
+        : null,
     ),
   );
 
@@ -261,6 +300,7 @@ async function route() {
 
 async function main() {
   await initPushIfNeeded(); // OneSignal(v16) 初期化（ボタン操作時許可は各画面側で実装済み前提）
+  seedIfEmpty();
   window.addEventListener('hashchange', route);
   await route();
 }

@@ -138,8 +138,19 @@ function categorySelect(value: Item['category']) {
   for (const c of CATEGORIES) sel.append(el('option', { value: c, textContent: c, selected: c === value }));
   return sel;
 }
-function fieldWrap(label: string, child: HTMLElement, cls: string) {
-  return el('div', { className: `field ${cls}` }, el('div', { className: 'field-label', textContent: label }), child);
+function fieldWrap(
+  label: string,
+  child: HTMLElement,
+  cls: string,
+  note?: string,
+) {
+  return el(
+    'div',
+    { className: `field ${cls}` },
+    el('div', { className: 'field-label', textContent: label }),
+    child,
+    note ? el('div', { className: 'field-note', textContent: note }) : null,
+  );
 }
 
 function renderEditRow(it: Item) {
@@ -155,7 +166,7 @@ function renderEditRow(it: Item) {
     fieldWrap('名前', nameI, 'ed-name'),
     fieldWrap('カテゴリ', catS, 'ed-cat'),
     fieldWrap('個数', qtyI, 'ed-qty'),
-    fieldWrap('閾値（この数以下で要補充）', thI, 'ed-th'),
+    fieldWrap('閾値', thI, 'ed-th', 'この数以下で要補充'),
     el('div', { className: 'save' }, btnSave),
     el('div', { className: 'del'  }, btnDel),
   );
@@ -194,7 +205,7 @@ function renderAddRow() {
     fieldWrap('（新規）名前', nameI, 'ed-name'),
     fieldWrap('カテゴリ',     catS,  'ed-cat'),
     fieldWrap('個数',         qtyI,  'ed-qty'),
-    fieldWrap('閾値（この数以下で要補充）', thI, 'ed-th'),
+    fieldWrap('閾値',         thI,  'ed-th', 'この数以下で要補充'),
     el('div', { className: 'save' }, btnAdd),
     el('div', { className: 'del'  }, btnClear),
   );
@@ -236,17 +247,25 @@ function renderAddRow() {
 async function renderEdit() {
   const root = $('#app')!;
   root.textContent = '';
+  const items = (await Promise.resolve(loadAll()))
+    .filter(i => !i.deleted)
+    .sort((a, b) =>
+      a.category === b.category
+        ? jaSortByName(a, b)
+        : CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category),
+    );
 
   root.append(
     renderEditHeader(),
     el('div', { className: 'edit-panel' },
+      el('h3', { className: 'section-title', textContent: '新規追加' }),
       renderAddRow(),
-      el('div', { className: 'edit-list' },
-        ...(await Promise.resolve(loadAll()))
-          .filter(i => !i.deleted)
-          .sort((a, b) => (a.category === b.category ? jaSortByName(a, b) : CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category)))
-          .map(renderEditRow)
-      )
+      items.length
+        ? el('h3', { className: 'section-title', textContent: '既存アイテム' })
+        : null,
+      items.length
+        ? el('div', { className: 'edit-list' }, ...items.map(renderEditRow))
+        : null,
     ),
   );
 

@@ -1,10 +1,6 @@
-// vite.config.js（全文）
 import { defineConfig } from 'vite';
 
 export default defineConfig({
-  base: '/stocklite/',   // GitHub Pages のサブパス
-  build: {
-    outDir: 'docs',      // 直接 docs に出力
-    emptyOutDir: false,  // 既存の docs を全部消したくない場合は false（そのまま）
-  },
+  base: '/stocklite/',
+  build: { outDir: 'dist' }
 });

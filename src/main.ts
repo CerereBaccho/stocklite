@@ -9,7 +9,7 @@
 import './style.css';
 
 import type { Item } from './storage/Storage';
-import { DEFAULT_CATEGORIES } from './storage/Storage';
+import { CATEGORIES } from './storage/Storage';
 import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
 import { nowISO } from './utils/time';
 import { initPushIfNeeded } from './push/onesignal';
@@ -42,7 +42,7 @@ function jaSortByName(a: Item, b: Item): number {
 }
 
 function getCategories(items: Item[]): string[] {
-  const set = new Set(DEFAULT_CATEGORIES);
+  const set = new Set(CATEGORIES);
   for (const it of items) set.add(it.category);
   return Array.from(set);
 }

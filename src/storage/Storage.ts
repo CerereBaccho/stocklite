@@ -1,5 +1,5 @@
 // src/storage/Storage.ts
-export const DEFAULT_CATEGORIES = ['キッチン', '洗面・トイレ'];
+export const CATEGORIES = ['キッチン', '洗面・トイレ'];
 export type Category = string;
 
 export type Item = {

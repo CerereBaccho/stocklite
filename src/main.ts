@@ -10,7 +10,7 @@ import './style.css';
 
 import type { Item } from './storage/Storage';
 import { CATEGORIES } from './storage/Storage';
-import { loadAll, saveItem, removeItem } from './storage/db';
+import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
 import { nowISO } from './utils/time';
 import { initPushIfNeeded } from './push/onesignal';
 
@@ -261,6 +261,7 @@ async function route() {
 
 async function main() {
   await initPushIfNeeded(); // OneSignal(v16) 初期化（ボタン操作時許可は各画面側で実装済み前提）
+  seedIfEmpty();
   window.addEventListener('hashchange', route);
   await route();
 }

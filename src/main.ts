@@ -1,22 +1,22 @@
 /* =========================
-   src/main.ts
-   - import の修正（db.ts から CRUD を取得）
-   - 編集UIは前回のまま（ラベル付き）
+   src/main.ts  — 2025-09-13
+   - type-only import を徹底
+   - 未使用の $$ / isPWAStandalone を撤去
+   - Item 生成時に必須フィールドを完全付与
+   - 閲覧(#/) と 編集(#/edit) をシンプルに切替
    ========================= */
 
 import './style.css';
 
-// 型・定数・ユーティリティは Storage.ts から
-import { Item, CATEGORIES, isPWAStandalone } from './storage/Storage';
-
-// CRUD は db.ts から
+import type { Item } from './storage/Storage';
+import { CATEGORIES } from './storage/Storage';
 import { loadAll, saveItem, removeItem } from './storage/db';
-
 import { nowISO } from './utils/time';
-import { initPushIfNeeded, showLocalTest } from './push/onesignal';
+import { initPushIfNeeded } from './push/onesignal';
 
-const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) => root.querySelector(sel) as T | null;
-const $$ = <T extends HTMLElement>(sel: string, root: ParentNode = document) => Array.from(root.querySelectorAll(sel)) as T[];
+// ---------- 小ユーティリティ ----------
+const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) =>
+  root.querySelector(sel) as T | null;
 
 function el<K extends keyof HTMLElementTagNameMap>(
   tag: K,
@@ -29,27 +29,101 @@ function el<K extends keyof HTMLElementTagNameMap>(
   return node;
 }
 
-/* ---------- 共通ヘッダ ---------- */
-function renderHeader() {
-  const header = el('div', { className: 'headerbar' },
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return crypto.randomUUID();
+  }
+  // ざっくりフォールバック
+  return 'id-' + Math.random().toString(36).slice(2) + '-' + Date.now();
+}
+
+function jaSortByName(a: Item, b: Item): number {
+  return a.name.localeCompare(b.name, 'ja');
+}
+
+// ---------- 閲覧画面 ----------
+function renderListHeader() {
+  return el('div', { className: 'headerbar' },
+    el('div', { className: 'title', textContent: 'StockLite' }),
+    el('div', { className: 'header-actions' },
+      el('button', { className: 'btn', id: 'btn-to-edit', textContent: '編集' }),
+    ),
+  );
+}
+
+function renderCard(it: Item) {
+  const need = it.qty <= it.threshold;
+  const tag = need
+    ? el('span', { className: 'tag danger', textContent: '要補充' })
+    : null;
+
+  const name = el('div', { className: 'item-name' + (need ? '' : ' no-tag'), textContent: it.name });
+
+  // 数量表示
+  const qtyText = el('span', { innerHTML: '個数：<b>' + it.qty + '</b>' });
+
+  // + / - ボタン（1刻み）
+  const btnMinus = el('button', { className: 'btn', textContent: '−' });
+  const btnPlus  = el('button', { className: 'btn', textContent: '＋' });
+
+  btnMinus.addEventListener('click', async () => {
+    const next = Math.max(0, it.qty - 1);
+    if (next === it.qty) return;
+    const updated: Item = { ...it, qty: next, updatedAt: nowISO() };
+    await saveItem(updated);
+    await renderList(); // 再描画
+  });
+
+  btnPlus.addEventListener('click', async () => {
+    const next = it.qty + 1;
+    const updated: Item = { ...it, qty: next, updatedAt: nowISO() };
+    await saveItem(updated);
+    await renderList(); // 再描画
+  });
+
+  const row1 = el('div', { className: 'row1' }, tag, name);
+  const row2 = el('div', { className: 'row2' },
+    el('div', { className: 'qty' }, qtyText),
+    el('div', { className: 'actions' }, btnMinus, btnPlus),
+  );
+  const nextRefill = it.nextRefillAt ? it.nextRefillAt.slice(5, 10).replace('-', '/') : '—';
+  const row3 = el('div', { className: 'row3', textContent: `次回補充：${nextRefill}` });
+
+  return el('div', { className: 'card' }, row1, row2, row3);
+}
+
+async function renderList() {
+  const root = $('#app')!;
+  root.textContent = '';
+
+  root.append(renderListHeader());
+
+  const all = (await Promise.resolve(loadAll())).filter(i => !i.deleted);
+  // カテゴリごと・名前順
+  for (const cat of CATEGORIES) {
+    const items = all.filter(i => i.category === cat).sort(jaSortByName);
+    if (!items.length) continue;
+
+    root.append(
+      el('h2', { className: 'cat', textContent: cat }),
+    );
+
+    for (const it of items) root.append(renderCard(it));
+  }
+
+  $('#btn-to-edit')?.addEventListener('click', () => { location.hash = '#/edit'; });
+}
+
+// ---------- 編集画面 ----------
+function renderEditHeader() {
+  return el('div', { className: 'headerbar' },
     el('div', { className: 'title', textContent: '編集' }),
     el('div', { className: 'header-actions' },
-      el('button', { className: 'btn primary', id: 'btn-add-open', textContent: '新規追加' }),
       el('button', { className: 'btn', id: 'btn-done', textContent: '完了' }),
     ),
   );
-  return header;
 }
 
-/* ---------- フィールド共通ラッパー（ラベル付） ---------- */
-function wrapField(label: string, child: HTMLElement, cls: string) {
-  return el('div', { className: `field ${cls}` },
-    el('div', { className: 'field-label', textContent: label }),
-    child
-  );
-}
-
-/* ---------- 入力部品 ---------- */
 function numberInput(value: number, min = 0) {
   const i = el('input', { type: 'number', value: String(value) }) as HTMLInputElement;
   i.min = String(min);
@@ -64,8 +138,10 @@ function categorySelect(value: Item['category']) {
   for (const c of CATEGORIES) sel.append(el('option', { value: c, textContent: c, selected: c === value }));
   return sel;
 }
+function fieldWrap(label: string, child: HTMLElement, cls: string) {
+  return el('div', { className: `field ${cls}` }, el('div', { className: 'field-label', textContent: label }), child);
+}
 
-/* ---------- 編集行 ---------- */
 function renderEditRow(it: Item) {
   const nameI = textInput(it.name);
   const catS  = categorySelect(it.category);
@@ -76,12 +152,12 @@ function renderEditRow(it: Item) {
   const btnDel  = el('button', { className: 'btn danger del', textContent: '削除' });
 
   const row = el('div', { className: 'edit-row' },
-    wrapField('名前', nameI, 'ed-name'),
-    wrapField('カテゴリ', catS, 'ed-cat'),
-    wrapField('個数', qtyI, 'ed-qty'),
-    wrapField('閾値（この数以下で要補充）', thI, 'ed-th'),
-    el('div', { className: 'save'  }, btnSave),
-    el('div', { className: 'del'   }, btnDel),
+    fieldWrap('名前', nameI, 'ed-name'),
+    fieldWrap('カテゴリ', catS, 'ed-cat'),
+    fieldWrap('個数', qtyI, 'ed-qty'),
+    fieldWrap('閾値（この数以下で要補充）', thI, 'ed-th'),
+    el('div', { className: 'save' }, btnSave),
+    el('div', { className: 'del'  }, btnDel),
   );
 
   btnSave.addEventListener('click', async () => {
@@ -105,21 +181,20 @@ function renderEditRow(it: Item) {
   return row;
 }
 
-/* ---------- 新規追加行 ---------- */
 function renderAddRow() {
   const nameI = textInput('');
   const catS  = categorySelect(CATEGORIES[0]);
   const qtyI  = numberInput(0, 0);
-  const thI   = numberInput(0, 0);
+  const thI   = numberInput(1, 0);
 
   const btnAdd   = el('button', { className: 'btn primary', textContent: '追加' });
   const btnClear = el('button', { className: 'btn ghost',   textContent: 'クリア' });
 
   const row = el('div', { className: 'edit-row add' },
-    wrapField('（新規）名前', nameI, 'ed-name'),
-    wrapField('カテゴリ',     catS,  'ed-cat'),
-    wrapField('個数',         qtyI,  'ed-qty'),
-    wrapField('閾値（この数以下で要補充）', thI, 'ed-th'),
+    fieldWrap('（新規）名前', nameI, 'ed-name'),
+    fieldWrap('カテゴリ',     catS,  'ed-cat'),
+    fieldWrap('個数',         qtyI,  'ed-qty'),
+    fieldWrap('閾値（この数以下で要補充）', thI, 'ed-th'),
     el('div', { className: 'save' }, btnAdd),
     el('div', { className: 'del'  }, btnClear),
   );
@@ -129,7 +204,7 @@ function renderAddRow() {
     if (!name) { (nameI as HTMLInputElement).focus(); return; }
 
     const newItem: Item = {
-      id: crypto.randomUUID(),
+      id: uuid(),
       name,
       category: (catS as HTMLSelectElement).value as Item['category'],
       qty: parseInt((qtyI as HTMLInputElement).value || '0', 10),
@@ -158,44 +233,36 @@ function renderAddRow() {
   return row;
 }
 
-/* ---------- 編集画面 ---------- */
 async function renderEdit() {
   const root = $('#app')!;
   root.textContent = '';
 
   root.append(
-    renderHeader(),
+    renderEditHeader(),
     el('div', { className: 'edit-panel' },
       renderAddRow(),
       el('div', { className: 'edit-list' },
-        ...(await loadAll()).map(renderEditRow)
+        ...(await Promise.resolve(loadAll()))
+          .filter(i => !i.deleted)
+          .sort((a, b) => (a.category === b.category ? jaSortByName(a, b) : CATEGORIES.indexOf(a.category) - CATEGORIES.indexOf(b.category)))
+          .map(renderEditRow)
       )
-    )
+    ),
   );
 
   $('#btn-done')?.addEventListener('click', () => { location.hash = ''; });
-  $('#btn-add-open')?.addEventListener('click', () => {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
-  });
 }
 
-/* ---------- 閲覧画面（既存のまま） ---------- */
-async function renderList() {
-  // …従来実装…
+// ---------- ルーティング & 起動 ----------
+async function route() {
+  if (location.hash === '#/edit') await renderEdit();
+  else await renderList();
 }
 
-/* ---------- 起動 ---------- */
 async function main() {
-  await initPushIfNeeded();
-
-  const route = () => {
-    if (location.hash === '#/edit') renderEdit();
-    else renderList();
-  };
+  await initPushIfNeeded(); // OneSignal(v16) 初期化（ボタン操作時許可は各画面側で実装済み前提）
   window.addEventListener('hashchange', route);
-  route();
+  await route();
 }
-main();
 
-// デバッグ用
-(window as any).testLocal = showLocalTest;
+main();

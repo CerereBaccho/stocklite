@@ -1,4 +1,3 @@
-// vite.config.js（全文）
 import { defineConfig } from 'vite';
 
 export default defineConfig({

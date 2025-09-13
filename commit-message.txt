@@ -1,1 +1,5 @@
-deploy: publish dist to GitHub Pages
+fix(build): import CRUD from storage/db instead of Storage
+
+- TS2305 errors were due to wrong module for loadAll/saveItem/removeItem
+- Split imports: types/constants from Storage.ts, CRUD from db.ts
+- Keep edit UI with labeled fields (no behavior change)

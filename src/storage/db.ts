@@ -1,96 +1,180 @@
-import { openDB } from 'idb';
-import type { IDBPDatabase } from 'idb';
-import type { Item, StorageAPI, History } from './Storage';
+// ==================== src/storage/db.ts ====================
+// Item 型 必須: lastRefillAt, nextRefillAt, updatedAt (string)
+//                deleted (boolean), version (number)
+// - 未設定の日時は "" で初期化
+// - deleted は false で初期化（削除は物理削除でも型は保持）
+// - version は 1 で初期化し、更新時は既存を維持
+// ===========================================================
 
-const DB_NAME = 'stocklite';
+import type { Item } from "./Storage";
+
+const DB_NAME = "stocklite";
+const STORE = "items";
 const VERSION = 1;
 
-let dbp: Promise<IDBPDatabase<any>>;
-
-function toISO(d = new Date()) { return new Date(d).toISOString(); }
-
-dbp = openDB(DB_NAME, VERSION, {
-  upgrade(db) {
-    const items = db.createObjectStore('items', { keyPath: 'id' });
-    items.createIndex('byCategory', 'category');
-    db.createObjectStore('history', { keyPath: ['itemId', 'date'] });
-  }
-});
-
-export const storage: StorageAPI = {
-  async getItems() {
-    const db = await dbp;
-    return db.getAll('items');
-  },
-
-  async upsert(item: Item) {
-    const db = await dbp;
-    item.updatedAt = toISO();
-    await db.put('items', item);
-  },
-
-  async adjustQty(id: string, delta: number) {
-    const db = await dbp;
-    const tx = db.transaction(['items', 'history'], 'readwrite');
-    const item = await tx.objectStore('items').get(id) as Item;
-    if (!item) return;
-
-    const old = item.qty;
-    item.qty = Math.max(0, old + delta);
-    if (delta > 0) item.lastRefillAt = toISO();
-
-    // 直近の補充間隔から nextRefillAt を推定（簡易）
-    const all = await tx.objectStore('history').getAll() as History[];
-    const ts = all
-      .filter(h => h.itemId === id && h.type === '補充')
-      .map(h => +new Date(h.date))
-      .sort((a, b) => b - a);
-
-    if (ts.length >= 2) {
-      const gaps: number[] = [];
-      for (let i = 0; i < Math.min(3, ts.length - 1); i++) {
-        gaps.push(ts[i] - ts[i + 1]);
+function openDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE)) {
+        const store = db.createObjectStore(STORE, { keyPath: "id" });
+        store.createIndex("by_category_name", ["category", "name"], { unique: false });
       }
-      const avg = gaps.reduce((a, b) => a + b, 0) / gaps.length;
-      item.nextRefillAt = toISO(new Date(Date.now() + avg));
-    }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
 
-    await tx.objectStore('items').put(item);
-    await tx.objectStore('history').put({
-      itemId: id,
-      date: toISO(),
-      delta,
-      type: delta > 0 ? '補充' : '消費'
-    } as History);
+async function tx<T>(mode: IDBTransactionMode, fn: (s: IDBObjectStore) => Promise<T>): Promise<T> {
+  const db = await openDB();
+  return new Promise<T>((resolve, reject) => {
+    const t = db.transaction(STORE, mode);
+    const s = t.objectStore(STORE);
+    fn(s).then(res => {
+      t.oncomplete = () => resolve(res);
+      t.onerror = () => reject(t.error);
+      t.onabort = () => reject(t.error);
+    }).catch(reject);
+  });
+}
 
-    await tx.done;
+function nowISO() { return new Date().toISOString(); }
+function uid(): string { return `i_${Date.now().toString(36)}_${Math.random().toString(36).slice(2,8)}`; }
+
+async function get(store: IDBObjectStore, id: string): Promise<Item | undefined> {
+  return new Promise<Item | undefined>((resolve, reject) => {
+    const req = store.get(id);
+    req.onsuccess = () => resolve(req.result as Item | undefined);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function getAll(store: IDBObjectStore): Promise<Item[]> {
+  return new Promise<Item[]>((resolve, reject) => {
+    const req = store.getAll();
+    req.onsuccess = () => resolve(req.result as Item[]);
+    req.onerror = () => reject(req.error);
+  });
+}
+function put(store: IDBObjectStore, item: Item): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const req = store.put(item);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+function del(store: IDBObjectStore, id: string): Promise<void> {
+  return new Promise<void>((resolve, reject) => {
+    const req = store.delete(id);
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}
+
+// ---------- public API ----------
+export const storage = {
+  async getItems(): Promise<Item[]> {
+    return tx("readonly", async (s) => await getAll(s));
   },
 
-  async getHistory(itemId: string, months: number) {
-    const db = await dbp;
-    const all = await db.getAll('history') as History[];
-    const from = new Date(); from.setMonth(from.getMonth() - months);
-    return all
-      .filter(h => h.itemId === itemId && new Date(h.date) >= from)
-      .sort((a, b) => +new Date(a.date) - +new Date(b.date));
+  async adjustQty(id: string, delta: number): Promise<void> {
+    return tx("readwrite", async (s) => {
+      const cur = await get(s, id);
+      if (!cur) return;
+      const nextQty = Math.max(0, (cur.qty || 0) + (delta || 0));
+      const updated: Item = {
+        ...cur,
+        qty: nextQty,
+        updatedAt: nowISO(),
+        // version は既存を維持（無ければ 1）
+        version: (cur as any).version ?? 1,
+        // deleted は既存値を維持（無ければ false）
+        deleted: (cur as any).deleted ?? false,
+      };
+      await put(s, updated);
+    });
   },
 
-  async exportCSV(years = 1) {
-    const db = await dbp;
-    const all = await db.getAll('history') as History[];
-    const from = new Date(); from.setFullYear(from.getFullYear() - years);
-    const rows = [['itemId', 'date', 'delta', 'type']];
-    all
-      .filter(h => new Date(h.date) >= from)
-      .forEach(h => rows.push([h.itemId, h.date, String(h.delta), h.type]));
-    return rows.map(r => r.join(',')).join('\n');
-  }
+  async addItem(input: { name: string; category: Item["category"]; qty: number; threshold: number }): Promise<Item> {
+    return tx("readwrite", async (s) => {
+      const it: Item = {
+        id: uid(),
+        name: (input.name || "").trim(),
+        category: input.category,
+        qty: Math.max(0, Math.min(999, input.qty || 0)),
+        threshold: Math.max(0, Math.min(999, input.threshold || 0)),
+        lastRefillAt: "",   // 未設定は空文字
+        nextRefillAt: "",   // 未設定は空文字
+        updatedAt: nowISO(),
+        deleted: false,     // 型必須
+        version: 1,         // 初期版
+      };
+      await put(s, it);
+      return it;
+    });
+  },
+
+  async updateThreshold(id: string, threshold: number): Promise<void> {
+    return tx("readwrite", async (s) => {
+      const cur = await get(s, id);
+      if (!cur) return;
+      const updated: Item = {
+        ...cur,
+        threshold: Math.max(0, Math.min(999, threshold || 0)),
+        updatedAt: nowISO(),
+        version: (cur as any).version ?? 1,
+        deleted: (cur as any).deleted ?? false,
+      };
+      await put(s, updated);
+    });
+  },
+
+  async updateItem(id: string, input: { name: string; category: Item["category"]; qty: number; threshold: number }): Promise<void> {
+    return tx("readwrite", async (s) => {
+      const cur = await get(s, id);
+      if (!cur) return;
+      const updated: Item = {
+        ...cur,
+        name: (input.name || "").trim(),
+        category: input.category,
+        qty: Math.max(0, Math.min(999, input.qty || 0)),
+        threshold: Math.max(0, Math.min(999, input.threshold || 0)),
+        updatedAt: nowISO(),
+        version: (cur as any).version ?? 1,
+        deleted: (cur as any).deleted ?? false,
+      };
+      await put(s, updated);
+    });
+  },
+
+  async deleteItem(id: string): Promise<void> {
+    return tx("readwrite", async (s) => {
+      await del(s, id); // 物理削除
+    });
+  },
 };
 
+// 初期投入（空のときのみ）
 export async function seedIfEmpty(presets: Item[]) {
-  const db = await dbp;
-  if ((await db.getAllKeys('items')).length > 0) return;
-  const tx = db.transaction('items', 'readwrite');
-  for (const it of presets) await tx.store.put(it);
-  await tx.done;
+  const items = await storage.getItems();
+  if (items.length > 0) return;
+  await tx("readwrite", async (s) => {
+    for (const p of presets) {
+      const filled: Item = {
+        id: p.id,
+        name: p.name,
+        category: p.category,
+        qty: p.qty,
+        threshold: p.threshold,
+        lastRefillAt: p.lastRefillAt ?? "",
+        nextRefillAt: p.nextRefillAt ?? "",
+        updatedAt: p.updatedAt ?? nowISO(),
+        deleted: (p as any).deleted ?? false,
+        version: (p as any).version ?? 1,
+      };
+      await put(s, filled);
+    }
+    return;
+  });
 }

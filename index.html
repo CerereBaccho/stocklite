@@ -2,45 +2,22 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>StockLite</title>
 
-    <!-- CSS -->
+    <!-- スタイル（style.css のみ） -->
     <link rel="stylesheet" href="./src/style.css" />
 
-    <!-- PWA系（相対パスに変更：/ 先頭だと GitHub Pages のサブパスで壊れる） -->
+    <!-- PWA / manifest -->
     <link rel="manifest" href="./manifest.json" />
     <meta name="theme-color" content="#ffffff" />
     <link rel="apple-touch-icon" href="./icons/apple-touch-icon.png" />
-    <meta name="apple-mobile-web-app-capable" content="yes" />
-    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 
-    <!-- ?clean=1 でこの一度だけ SW を全解除してリロード（キャッシュ固着対策） -->
-    <script>
-      (async () => {
-        const p = new URL(location.href).searchParams;
-        if (p.get('clean') === '1' && 'serviceWorker' in navigator) {
-          try {
-            const regs = await navigator.serviceWorker.getRegistrations();
-            for (const r of regs) await r.unregister();
-            // OneSignalの登録済みワーカー名も明示的に消しておく
-            if (navigator.serviceWorker.controller) {
-              navigator.serviceWorker.controller.postMessage({type:'SKIP_WAITING'});
-            }
-          } catch (e) {}
-          // クエリを外してリロード
-          const u = new URL(location.href); u.searchParams.delete('clean');
-          location.replace(u.toString());
-        }
-      })();
-    </script>
+    <!-- OneSignal Web SDK v16 -->
+    <script src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js" defer></script>
   </head>
   <body>
     <div id="app"></div>
-
-    <!-- エントリ -->
     <script type="module" src="./src/main.ts"></script>
-    <!-- OneSignal SDK -->
-    <script src="https://cdn.onesignal.com/sdks/OneSignalSDK.page.js" defer></script>
   </body>
 </html>

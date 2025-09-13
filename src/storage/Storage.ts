@@ -1,14 +1,25 @@
-export type Item = {
-  id: string; name: string; qty: number; threshold: number;
-  lastRefillAt: string; nextRefillAt: string; updatedAt: string;
-  deleted: boolean; version: number; category: "キッチン" | "洗面・トイレ";
-};
-export type History = { itemId: string; date: string; delta: number; type: "補充"|"消費" };
+// src/storage/Storage.ts
+export const CATEGORIES = ['キッチン', '洗面・トイレ'] as const;
+export type Category = (typeof CATEGORIES)[number];
 
-export interface StorageAPI {
-  getItems(): Promise<Item[]>;
-  upsert(item: Item): Promise<void>;
-  adjustQty(id: string, delta: number): Promise<void>;
-  getHistory(itemId: string, months: number): Promise<History[]>;
-  exportCSV(years?: number): Promise<string>;
-}
+export type Item = {
+  id: string;
+  name: string;
+  category: Category;
+  qty: number;
+  threshold: number;
+  lastRefillAt: string;  // ISO
+  nextRefillAt: string;  // ISO
+  createdAt: string;     // ISO
+  updatedAt: string;     // ISO
+  deleted: boolean;
+  version: number;
+};
+
+// PWA スタンドアロン判定（簡易）
+export const isPWAStandalone = (): boolean => {
+  if (typeof window === 'undefined') return false;
+  const mm = window.matchMedia?.('(display-mode: standalone)')?.matches;
+  const iosStandalone = (navigator as any).standalone === true;
+  return !!(mm || iosStandalone);
+};

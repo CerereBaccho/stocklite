@@ -95,6 +95,7 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
 /* 各行をカード化（グリッド） */
 .edit-row{
   display:grid;
+  width:100%;
   background: var(--surface);
   border:1px solid var(--border);
   border-radius:16px;
@@ -121,7 +122,7 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
 }
 
 /* ▼ 追加：フィールド共通ラッパーとラベル */
-.field{ display:flex; flex-direction:column; }
+.field{ display:flex; flex-direction:column; width:100%; }
 .field-label{
   font-size:12px; color:var(--muted);
   margin: 2px 2px 6px;
@@ -167,6 +168,9 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
   background:#f9fbff;
   border-style:dashed;
 }
+
+.edit-row.add .save{ grid-area:add; }
+.edit-row.add .del { grid-area:clear; }
 
 .section-title{
   margin: 8px 4px;

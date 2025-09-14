@@ -1,6 +1,31 @@
 // src/storage/Storage.ts
-export const CATEGORIES = ['キッチン', '洗面・トイレ'] as const;
-export type Category = (typeof CATEGORIES)[number];
+const CAT_KEY = 'stocklite/categories';
+const DEFAULT_CATEGORIES = ['キッチン', '洗面・トイレ'];
+
+const loadCategories = (): string[] => {
+  if (typeof localStorage === 'undefined') return [...DEFAULT_CATEGORIES];
+  try {
+    const stored = JSON.parse(localStorage.getItem(CAT_KEY) || '[]');
+    if (Array.isArray(stored) && stored.length) return stored as string[];
+  } catch {
+    /* ignore */
+  }
+  localStorage.setItem(CAT_KEY, JSON.stringify(DEFAULT_CATEGORIES));
+  return [...DEFAULT_CATEGORIES];
+};
+
+export let CATEGORIES: string[] = loadCategories();
+
+export const addCategory = (c: string) => {
+  const name = c.trim();
+  if (!name || CATEGORIES.includes(name)) return;
+  CATEGORIES.push(name);
+  if (typeof localStorage !== 'undefined') {
+    localStorage.setItem(CAT_KEY, JSON.stringify(CATEGORIES));
+  }
+};
+
+export type Category = string;
 
 export type Item = {
   id: string;

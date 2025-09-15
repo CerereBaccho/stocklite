@@ -13,6 +13,13 @@ import { CATEGORIES, addCategory } from './storage/Storage';
 import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
 import { nowISO } from './utils/time';
 import { initPushIfNeeded } from './push/onesignal';
+import Chart from 'chart.js/auto';
+import {
+  recordHistory,
+  getDailyNet,
+  exportHistoryCSV,
+  clearHistory,
+} from './storage/history';
 
 // ---------- 小ユーティリティ ----------
 const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) =>
@@ -71,6 +78,15 @@ function renderCard(it: Item) {
     if (next === it.qty) return;
     const updated: Item = { ...it, qty: next, updatedAt: nowISO() };
     await saveItem(updated);
+    void recordHistory({
+      itemId: it.id,
+      type: 'dec',
+      delta: -1,
+      qtyBefore: it.qty,
+      qtyAfter: next,
+      name: it.name,
+      category: it.category,
+    });
     await renderList(); // 再描画
   });
 
@@ -78,6 +94,15 @@ function renderCard(it: Item) {
     const next = it.qty + 1;
     const updated: Item = { ...it, qty: next, updatedAt: nowISO() };
     await saveItem(updated);
+    void recordHistory({
+      itemId: it.id,
+      type: 'inc',
+      delta: 1,
+      qtyBefore: it.qty,
+      qtyAfter: next,
+      name: it.name,
+      category: it.category,
+    });
     await renderList(); // 再描画
   });
 
@@ -90,6 +115,52 @@ function renderCard(it: Item) {
   const row3 = el('div', { className: 'row3', textContent: `次回補充：${nextRefill}` });
 
   return el('div', { className: 'card' }, row1, row2, row3);
+}
+
+async function renderHistoryCard() {
+  const wrap = el('div', { className: 'card history' });
+  wrap.append(el('div', { className: 'history-note', textContent: '90日間の増減（1日あたりの合計）' }));
+  const canvas = el('canvas') as HTMLCanvasElement;
+  wrap.append(canvas);
+  const actions = el(
+    'div',
+    { className: 'history-actions' },
+    el('button', { className: 'btn', id: 'btn-csv', textContent: 'CSV保存' }),
+    el('button', { className: 'btn danger', id: 'btn-clear-history', textContent: '履歴を全削除' }),
+  );
+  wrap.append(actions);
+  wrap.append(el('div', { className: 'history-note csv', textContent: '1年分の履歴を書き出します' }));
+
+  const daily = await getDailyNet(90);
+  const labels = daily.map(d => d.date.slice(5));
+  const data = daily.map(d => d.value);
+  new Chart(canvas, {
+    type: 'line',
+    data: { labels, datasets: [{ data, borderColor: '#1a73e8', fill: false }] },
+    options: {
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            label: ctx => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y}`,
+          },
+        },
+      },
+      scales: { y: { beginAtZero: true } },
+    },
+  });
+
+  $('#btn-csv', wrap)?.addEventListener('click', () => {
+    void exportHistoryCSV();
+  });
+  $('#btn-clear-history', wrap)?.addEventListener('click', async () => {
+    if (confirm('履歴を全削除しますか？')) {
+      await clearHistory();
+      await renderList();
+    }
+  });
+
+  return wrap;
 }
 
 async function renderList() {
@@ -110,6 +181,8 @@ async function renderList() {
 
     for (const it of items) root.append(renderCard(it));
   }
+
+  root.append(await renderHistoryCard());
 
   $('#btn-to-edit')?.addEventListener('click', () => { location.hash = '#/edit'; });
 }
@@ -203,11 +276,36 @@ function renderEditRow(it: Item) {
     };
     addCategory(updated.category);
     await saveItem(updated);
+    if (
+      updated.qty !== it.qty ||
+      updated.name !== it.name ||
+      updated.category !== it.category ||
+      updated.threshold !== it.threshold
+    ) {
+      void recordHistory({
+        itemId: it.id,
+        type: 'edit',
+        delta: updated.qty - it.qty,
+        qtyBefore: it.qty,
+        qtyAfter: updated.qty,
+        name: updated.name,
+        category: updated.category,
+      });
+    }
     await renderEdit();
   });
 
   btnDel.addEventListener('click', async () => {
     await removeItem(it.id);
+    void recordHistory({
+      itemId: it.id,
+      type: 'delete',
+      delta: 0,
+      qtyBefore: it.qty,
+      qtyAfter: 0,
+      name: it.name,
+      category: it.category,
+    });
     await renderEdit();
   });
 
@@ -251,6 +349,15 @@ function renderAddRow() {
     };
     addCategory(newItem.category);
     await saveItem(newItem);
+    void recordHistory({
+      itemId: newItem.id,
+      type: 'create',
+      delta: 0,
+      qtyBefore: 0,
+      qtyAfter: newItem.qty,
+      name: newItem.name,
+      category: newItem.category,
+    });
 
     (nameI as HTMLInputElement).value = '';
     (qtyI  as HTMLInputElement).value = '0';

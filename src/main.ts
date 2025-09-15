@@ -404,17 +404,11 @@ function drawLine(canvas: HTMLCanvasElement, data: number[], min: number, max: n
   const w = canvas.width;
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
-
-  // 値に変化がない場合は線が底に張り付いて見えなくなるため、上下に余白を作る
-  if (min === max) {
-    min -= 1;
-    max += 1;
-  }
   const range = max - min || 1;
-  const stepX = data.length > 1 ? w / (data.length - 1) : 0;
+  const stepX = w / (data.length - 1);
   ctx.beginPath();
   data.forEach((q, i) => {
-    const x = data.length > 1 ? i * stepX : w / 2;
+    const x = i * stepX;
     const y = h - ((q - min) / range) * h;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   });

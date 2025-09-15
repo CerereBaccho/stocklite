@@ -26,7 +26,7 @@ export const seedIfEmpty = () => {
 };
 
 const normalize = (it: any): Item => ({
-  id: typeof it?.id === 'string' ? it.id : uuid(),
+  id: typeof it?.id === 'string' && it.id ? it.id : uuid(),
   name: typeof it?.name === 'string' ? it.name : '',
   category: typeof it?.category === 'string' ? it.category : '',
   qty: typeof it?.qty === 'number' ? it.qty : Number(it?.qty) || 0,

@@ -58,6 +58,21 @@ export const appendHistory = (entry: HistoryEntry) => {
   write(all);
 };
 
+export const ensureHistoryNames = (items: { id: string; name: string }[]) => {
+  const arr = read();
+  let changed = false;
+  for (const e of arr) {
+    if (!e.itemName) {
+      const it = items.find(i => i.id === e.itemId);
+      if (it) {
+        e.itemName = it.name;
+        changed = true;
+      }
+    }
+  }
+  if (changed) write(arr);
+};
+
 export const recentHistory = (limit = 10): HistoryEntry[] => {
   const all = read();
   return all.slice(-limit).reverse();

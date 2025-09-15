@@ -422,7 +422,7 @@ async function renderHistory(id: string) {
 
   if (!it && allHist.length) {
     const last = allHist[allHist.length - 1];
-    const named = items.find(i => i.name === last.itemName);
+    const named = items.find(i => i.id === last.itemId || i.name === last.itemName);
     if (named) {
       updateHistoryItemId(id, named.id, named.name);
       id = named.id;

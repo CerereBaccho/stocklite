@@ -42,7 +42,7 @@ export const updateHistoryItemId = (oldId: string, newId: string, name?: string)
   for (const e of arr) {
     if (
       e.itemId === oldId ||
-      (oldId === '' && !e.itemId && name && e.itemName === name)
+      (!e.itemId && name && e.itemName === name)
     ) {
       e.itemId = newId;
       if (name) e.itemName = name;

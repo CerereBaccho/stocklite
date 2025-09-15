@@ -418,7 +418,18 @@ async function renderHistory(id: string) {
 
   const items = await Promise.resolve(loadAll());
   let it = items.find(x => x.id === id);
-  const allHist = historyForItem(id);
+  let allHist = historyForItem(id);
+
+  if (!it && !allHist.length) {
+    const blanks = historyForItem('');
+    const match = blanks.find(b => items.some(i => i.name === b.itemName));
+    if (match) {
+      it = items.find(i => i.name === match.itemName)!;
+      updateHistoryItemId('', it.id, it.name);
+      allHist = historyForItem(it.id);
+    }
+  }
+
   if (!it && allHist.length) {
     const last = allHist[allHist.length - 1];
     it = {

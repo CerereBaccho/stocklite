@@ -13,7 +13,7 @@ import { CATEGORIES, addCategory } from './storage/Storage';
 import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
 import { nowISO } from './utils/time';
 import { initPushIfNeeded } from './push/onesignal';
-import { appendHistory, recentHistory, historyForItem, historySince } from './storage/history';
+import { appendHistory, recentHistory, historyForItem, historySince, updateHistoryItemId } from './storage/history';
 
 // ---------- 小ユーティリティ ----------
 const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) =>
@@ -54,9 +54,11 @@ function renderListHeader() {
 
 function renderCard(it: Item) {
   if (!it.id) {
+    const oldId = it.id || '';
     it.id = uuid();
     it.updatedAt = nowISO();
     saveItem(it);
+    updateHistoryItemId(oldId, it.id, it.name);
   }
   const need = it.qty <= it.threshold;
   const tag = need

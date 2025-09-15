@@ -2,6 +2,7 @@
 import type { Item } from './Storage';
 import { PRESETS } from '../presets';
 import { nowISO } from '../utils/time';
+import { updateHistoryItemId } from './history';
 
 const LS_KEY = 'stocklite/items';
 
@@ -40,7 +41,13 @@ const normalize = (it: any): Item => ({
 });
 
 export const loadAll = (): Item[] => {
-  const arr = read().map(normalize);
+  const raw = read();
+  const arr = raw.map(normalize);
+  raw.forEach((orig, i) => {
+    if (orig.id !== arr[i].id) {
+      updateHistoryItemId(orig.id || '', arr[i].id, orig.name || arr[i].name);
+    }
+  });
   write(arr);
   return arr;
 };

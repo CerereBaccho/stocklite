@@ -6,14 +6,15 @@
    - 閲覧(#/) と 編集(#/edit) をシンプルに切替
    ========================= */
 
-import './style.css';
+if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+  await import('./style.css');
+}
 
-import type { Item } from './storage/Storage';
-import { CATEGORIES, addCategory } from './storage/Storage';
-import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
-import { nowISO } from './utils/time';
-import { initPushIfNeeded } from './push/onesignal';
-import { appendHistory, recentHistory, historyForItem, historySince, updateHistoryItemId } from './storage/history';
+import type { Item } from './storage/Storage.ts';
+import { CATEGORIES, addCategory } from './storage/Storage.ts';
+import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db.ts';
+import { nowISO } from './utils/time.ts';
+import { appendHistory, recentHistory, historyForItem, historySince, updateHistoryItemId } from './storage/history.ts';
 
 // ---------- 小ユーティリティ ----------
 const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) =>
@@ -552,10 +553,15 @@ async function route() {
 }
 
 async function main() {
+  const { initPushIfNeeded } = await import('./push/onesignal.ts');
   await initPushIfNeeded(); // OneSignal(v16) 初期化（ボタン操作時許可は各画面側で実装済み前提）
   seedIfEmpty();
   window.addEventListener('hashchange', route);
   await route();
 }
 
-main();
+if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+  main();
+}
+
+export { renderHistory };

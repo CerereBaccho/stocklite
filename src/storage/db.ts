@@ -1,8 +1,8 @@
 // src/storage/db.ts
-import type { Item } from './Storage';
-import { PRESETS } from '../presets';
-import { nowISO } from '../utils/time';
-import { updateHistoryItemId, ensureHistoryNames } from './history';
+import type { Item } from './Storage.ts';
+import { PRESETS } from '../presets.ts';
+import { nowISO } from '../utils/time.ts';
+import { updateHistoryItemId, ensureHistoryNames } from './history.ts';
 
 const LS_KEY = 'stocklite/items';
 

@@ -13,6 +13,7 @@ import { CATEGORIES, addCategory } from './storage/Storage';
 import { loadAll, saveItem, removeItem, seedIfEmpty } from './storage/db';
 import { nowISO } from './utils/time';
 import { initPushIfNeeded } from './push/onesignal';
+import { appendHistory, recentHistory, historyForItem, historySince } from './storage/history';
 
 // ---------- 小ユーティリティ ----------
 const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) =>
@@ -62,15 +63,24 @@ function renderCard(it: Item) {
   // 数量表示
   const qtyText = el('span', { innerHTML: '個数：<b>' + it.qty + '</b>' });
 
-  // + / - ボタン（1刻み）
+  // + / - / 履歴 ボタン
   const btnMinus = el('button', { className: 'btn', textContent: '−' });
   const btnPlus  = el('button', { className: 'btn', textContent: '＋' });
+  const btnHist  = el('button', { className: 'btn', textContent: '履歴' });
 
   btnMinus.addEventListener('click', async () => {
     const next = Math.max(0, it.qty - 1);
     if (next === it.qty) return;
     const updated: Item = { ...it, qty: next, updatedAt: nowISO() };
     await saveItem(updated);
+    appendHistory({
+      timestamp: nowISO(),
+      itemId: it.id,
+      itemName: it.name,
+      delta: next - it.qty,
+      qtyAfter: next,
+      reason: 'dec',
+    });
     await renderList(); // 再描画
   });
 
@@ -78,13 +88,25 @@ function renderCard(it: Item) {
     const next = it.qty + 1;
     const updated: Item = { ...it, qty: next, updatedAt: nowISO() };
     await saveItem(updated);
+    appendHistory({
+      timestamp: nowISO(),
+      itemId: it.id,
+      itemName: it.name,
+      delta: next - it.qty,
+      qtyAfter: next,
+      reason: 'inc',
+    });
     await renderList(); // 再描画
+  });
+
+  btnHist.addEventListener('click', () => {
+    location.hash = '#/history/' + it.id;
   });
 
   const row1 = el('div', { className: 'row1' }, tag, name);
   const row2 = el('div', { className: 'row2' },
     el('div', { className: 'qty' }, qtyText),
-    el('div', { className: 'actions' }, btnMinus, btnPlus),
+    el('div', { className: 'actions' }, btnMinus, btnPlus, btnHist),
   );
   const nextRefill = it.nextRefillAt ? it.nextRefillAt.slice(5, 10).replace('-', '/') : '—';
   const row3 = el('div', { className: 'row3', textContent: `次回補充：${nextRefill}` });
@@ -110,6 +132,9 @@ async function renderList() {
 
     for (const it of items) root.append(renderCard(it));
   }
+
+  const recent = renderRecentHistory();
+  if (recent) root.append(recent);
 
   $('#btn-to-edit')?.addEventListener('click', () => { location.hash = '#/edit'; });
 }
@@ -203,11 +228,30 @@ function renderEditRow(it: Item) {
     };
     addCategory(updated.category);
     await saveItem(updated);
+    const delta = updated.qty - it.qty;
+    if (delta !== 0) {
+      appendHistory({
+        timestamp: updated.updatedAt,
+        itemId: it.id,
+        itemName: updated.name,
+        delta,
+        qtyAfter: updated.qty,
+        reason: 'edit',
+      });
+    }
     await renderEdit();
   });
 
   btnDel.addEventListener('click', async () => {
     await removeItem(it.id);
+    appendHistory({
+      timestamp: nowISO(),
+      itemId: it.id,
+      itemName: it.name,
+      delta: -it.qty,
+      qtyAfter: 0,
+      reason: 'delete',
+    });
     await renderEdit();
   });
 
@@ -251,6 +295,14 @@ function renderAddRow() {
     };
     addCategory(newItem.category);
     await saveItem(newItem);
+    appendHistory({
+      timestamp: newItem.createdAt,
+      itemId: newItem.id,
+      itemName: newItem.name,
+      delta: newItem.qty,
+      qtyAfter: newItem.qty,
+      reason: 'add',
+    });
 
     (nameI as HTMLInputElement).value = '';
     (qtyI  as HTMLInputElement).value = '0';
@@ -295,9 +347,122 @@ async function renderEdit() {
   $('#btn-done')?.addEventListener('click', () => { location.hash = ''; });
 }
 
+function renderRecentHistory() {
+  const rec = recentHistory(10);
+  if (!rec.length) return null;
+  const items = rec.map(e =>
+    el('li', {},
+      el('span', { className: 'dt', textContent: e.timestamp.slice(5, 16).replace('T', ' ') }),
+      el('span', { className: 'ev', textContent: `${e.itemName} (${e.delta > 0 ? '+' : ''}${e.delta} → ${e.qtyAfter})` })
+    )
+  );
+  return el('div', { className: 'recent' },
+    el('h2', { className: 'cat', textContent: '最近の変更' }),
+    el('ul', { className: 'hist-list' }, ...items),
+  );
+}
+
+function renderHistoryHeader(name: string) {
+  return el('div', { className: 'headerbar' },
+    el('div', { className: 'title', textContent: `${name}の履歴` }),
+    el('div', { className: 'header-actions' },
+      el('button', { className: 'btn', id: 'btn-csv', textContent: 'CSVエクスポート' }),
+      el('button', { className: 'btn', id: 'btn-back', textContent: '戻る' }),
+    ),
+  );
+}
+
+function drawLine(canvas: HTMLCanvasElement, data: number[], min: number, max: number) {
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  const w = canvas.width;
+  const h = canvas.height;
+  ctx.clearRect(0, 0, w, h);
+  const range = max - min || 1;
+  const stepX = w / (data.length - 1);
+  ctx.beginPath();
+  data.forEach((q, i) => {
+    const x = i * stepX;
+    const y = h - ((q - min) / range) * h;
+    if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+  });
+  ctx.strokeStyle = '#000';
+  ctx.stroke();
+}
+
+async function renderHistory(id: string) {
+  const root = $('#app')!;
+  root.textContent = '';
+
+  const items = await Promise.resolve(loadAll());
+  const it = items.find(x => x.id === id);
+  if (!it) { root.textContent = 'アイテムが見つかりません'; return; }
+
+  root.append(renderHistoryHeader(it.name));
+
+  const DAY = 86400000;
+  const start = new Date(Date.now() - 89 * DAY);
+  const hist = historyForItem(id, start.toISOString());
+  const deltaSum = hist.reduce((s, e) => s + e.delta, 0);
+  let qty = it.qty - deltaSum;
+
+  const dayMap = new Map<string, number>();
+  for (const h of hist) {
+    const day = h.timestamp.slice(0, 10);
+    dayMap.set(day, (dayMap.get(day) || 0) + h.delta);
+  }
+
+  const data: number[] = [];
+  for (let i = 0; i < 90; i++) {
+    const day = new Date(start.getTime() + i * DAY).toISOString().slice(0, 10);
+    qty += dayMap.get(day) || 0;
+    data.push(qty);
+  }
+
+  const min = Math.min(...data);
+  const max = Math.max(...data);
+
+  const canvas = el('canvas', { width: 320, height: 160 }) as HTMLCanvasElement;
+  drawLine(canvas, data, min, max);
+  const chart = el('div', { className: 'hist-chart' }, canvas);
+  const stats = el('div', { className: 'hist-stats', textContent: `現在:${it.qty} / 最小:${min} / 最大:${max}` });
+
+  const recent = historyForItem(id).slice(-10).reverse();
+  const listItems = recent.map(e =>
+    el('li', {},
+      el('span', { className: 'dt', textContent: e.timestamp.slice(5, 16).replace('T', ' ') }),
+      el('span', { className: 'ev', textContent: `${e.delta > 0 ? '+' : ''}${e.delta} → ${e.qtyAfter}` }),
+    )
+  );
+  const list = el('ul', { className: 'hist-list' }, ...listItems);
+
+  root.append(chart, stats, list);
+
+  $('#btn-back')?.addEventListener('click', () => { location.hash = ''; });
+  $('#btn-csv')?.addEventListener('click', () => {
+    const oneYear = new Date(Date.now() - 365 * DAY).toISOString();
+    const entries = historySince(oneYear);
+    const header = 'timestamp,itemName,itemId,delta,qtyAfter,reason';
+    const esc = (v: any) => '"' + String(v).replace(/"/g, '""') + '"';
+    const lines = entries.map(e => [e.timestamp, e.itemName, e.itemId, e.delta, e.qtyAfter, e.reason].map(esc).join(','));
+    const csv = '\uFEFF' + [header, ...lines].join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a');
+    const d = new Date();
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, '0');
+    const dd = String(d.getDate()).padStart(2, '0');
+    a.href = URL.createObjectURL(blob);
+    a.download = `stocklite_history_${yyyy}${mm}${dd}.csv`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+}
+
 // ---------- ルーティング & 起動 ----------
 async function route() {
   if (location.hash === '#/edit') await renderEdit();
+  else if (location.hash.startsWith('#/history/')) await renderHistory(location.hash.slice(10));
   else await renderList();
 }
 

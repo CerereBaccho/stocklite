@@ -80,6 +80,7 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
 .qty b{ font-size:18px; }
 .actions{ display:flex; gap:8px; }
 .actions .btn{ width:54px; height:48px; font-size:20px; border-radius:12px; }
+.actions .btn.hist{ width:48px; font-size:14px; }
 .row3{ color:var(--muted); margin-top:8px; }
 
 /* ---- 編集画面 ---- */

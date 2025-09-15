@@ -1,8 +1,16 @@
 // src/storage/db.ts
 import type { Item } from './Storage';
 import { PRESETS } from '../presets';
+import { nowISO } from '../utils/time';
 
 const LS_KEY = 'stocklite/items';
+
+function uuid(): string {
+  if (typeof crypto !== 'undefined' && 'randomUUID' in crypto) {
+    return (crypto as any).randomUUID();
+  }
+  return 'id-' + Math.random().toString(36).slice(2) + '-' + Date.now();
+}
 
 const read = (): Item[] => {
   try {
@@ -17,7 +25,25 @@ export const seedIfEmpty = () => {
   if (read().length === 0) write(PRESETS);
 };
 
-export const loadAll = (): Item[] => read();
+const normalize = (it: any): Item => ({
+  id: typeof it?.id === 'string' ? it.id : uuid(),
+  name: typeof it?.name === 'string' ? it.name : '',
+  category: typeof it?.category === 'string' ? it.category : '',
+  qty: typeof it?.qty === 'number' ? it.qty : Number(it?.qty) || 0,
+  threshold: typeof it?.threshold === 'number' ? it.threshold : Number(it?.threshold) || 0,
+  lastRefillAt: typeof it?.lastRefillAt === 'string' ? it.lastRefillAt : '',
+  nextRefillAt: typeof it?.nextRefillAt === 'string' ? it.nextRefillAt : '',
+  createdAt: typeof it?.createdAt === 'string' ? it.createdAt : nowISO(),
+  updatedAt: typeof it?.updatedAt === 'string' ? it.updatedAt : nowISO(),
+  deleted: !!it?.deleted,
+  version: typeof it?.version === 'number' ? it.version : 1,
+});
+
+export const loadAll = (): Item[] => {
+  const arr = read().map(normalize);
+  write(arr);
+  return arr;
+};
 
 export const saveItem = (it: Item): Item => {
   const items = read();

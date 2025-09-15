@@ -66,7 +66,7 @@ function renderCard(it: Item) {
   // + / - / 履歴 ボタン
   const btnMinus = el('button', { className: 'btn', textContent: '−' });
   const btnPlus  = el('button', { className: 'btn', textContent: '＋' });
-  const btnHist  = el('button', { className: 'btn', textContent: '履歴' });
+  const btnHist  = el('button', { className: 'btn hist', textContent: '履歴' });
 
   btnMinus.addEventListener('click', async () => {
     const next = Math.max(0, it.qty - 1);
@@ -348,12 +348,27 @@ async function renderEdit() {
 }
 
 function renderRecentHistory() {
-  const rec = recentHistory(10);
-  if (!rec.length) return null;
-  const items = rec.map(e =>
+  const rec = recentHistory(100);
+  const map = new Map<string, { day: string; itemName: string; delta: number; qtyAfter: number }>();
+  const order: string[] = [];
+  for (const e of rec) {
+    const day = e.timestamp.slice(0, 10);
+    const key = day + '|' + e.itemId;
+    if (!map.has(key)) {
+      map.set(key, { day, itemName: e.itemName, delta: e.delta, qtyAfter: e.qtyAfter });
+      order.push(key);
+    } else {
+      const g = map.get(key)!;
+      g.delta += e.delta;
+      g.qtyAfter = e.qtyAfter;
+    }
+  }
+  const groups = order.slice(0, 10).map(k => map.get(k)!);
+  if (!groups.length) return null;
+  const items = groups.map(g =>
     el('li', {},
-      el('span', { className: 'dt', textContent: e.timestamp.slice(5, 16).replace('T', ' ') }),
-      el('span', { className: 'ev', textContent: `${e.itemName} (${e.delta > 0 ? '+' : ''}${e.delta} → ${e.qtyAfter})` })
+      el('span', { className: 'dt', textContent: g.day.slice(5) }),
+      el('span', { className: 'ev', textContent: `${g.itemName} (${g.delta > 0 ? '+' : ''}${g.delta} → ${g.qtyAfter})` })
     )
   );
   return el('div', { className: 'recent' },
@@ -427,11 +442,23 @@ async function renderHistory(id: string) {
   const chart = el('div', { className: 'hist-chart' }, canvas);
   const stats = el('div', { className: 'hist-stats', textContent: `現在:${it.qty} / 最小:${min} / 最大:${max}` });
 
-  const recent = historyForItem(id).slice(-10).reverse();
-  const listItems = recent.map(e =>
+  const histArr = historyForItem(id);
+  const groups: { day: string; delta: number; qtyAfter: number }[] = [];
+  for (let i = histArr.length - 1; i >= 0; i--) {
+    const e = histArr[i];
+    const day = e.timestamp.slice(0, 10);
+    const last = groups[groups.length - 1];
+    if (last && last.day === day) {
+      last.delta += e.delta;
+      last.qtyAfter = e.qtyAfter;
+    } else {
+      groups.push({ day, delta: e.delta, qtyAfter: e.qtyAfter });
+    }
+  }
+  const listItems = groups.slice(0, 10).map(g =>
     el('li', {},
-      el('span', { className: 'dt', textContent: e.timestamp.slice(5, 16).replace('T', ' ') }),
-      el('span', { className: 'ev', textContent: `${e.delta > 0 ? '+' : ''}${e.delta} → ${e.qtyAfter}` }),
+      el('span', { className: 'dt', textContent: g.day.slice(5) }),
+      el('span', { className: 'ev', textContent: `${g.delta > 0 ? '+' : ''}${g.delta} → ${g.qtyAfter}` }),
     )
   );
   const list = el('ul', { className: 'hist-list' }, ...listItems);

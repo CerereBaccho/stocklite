@@ -415,14 +415,31 @@ async function renderHistory(id: string) {
   root.textContent = '';
 
   const items = await Promise.resolve(loadAll());
-  const it = items.find(x => x.id === id);
+  let it = items.find(x => x.id === id);
+  const allHist = historyForItem(id);
+  if (!it && allHist.length) {
+    const last = allHist[allHist.length - 1];
+    it = {
+      id,
+      name: last.itemName || '不明なアイテム',
+      category: '',
+      qty: last.qtyAfter,
+      threshold: 0,
+      lastRefillAt: '',
+      nextRefillAt: '',
+      createdAt: last.timestamp,
+      updatedAt: last.timestamp,
+      deleted: false,
+      version: 1,
+    };
+  }
   if (!it) { root.textContent = 'アイテムが見つかりません'; return; }
 
   root.append(renderHistoryHeader(it.name));
 
   const DAY = 86400000;
   const start = new Date(Date.now() - 89 * DAY);
-  const hist = historyForItem(id, start.toISOString());
+  const hist = allHist.filter(h => h.timestamp >= start.toISOString());
   const deltaSum = hist.reduce((s, e) => s + e.delta, 0);
   let qty = it.qty - deltaSum;
 
@@ -447,10 +464,9 @@ async function renderHistory(id: string) {
   const chart = el('div', { className: 'hist-chart' }, canvas);
   const stats = el('div', { className: 'hist-stats', textContent: `現在:${it.qty} / 最小:${min} / 最大:${max}` });
 
-  const histArr = historyForItem(id);
   const groups: { day: string; delta: number; qtyAfter: number }[] = [];
-  for (let i = histArr.length - 1; i >= 0; i--) {
-    const e = histArr[i];
+  for (let i = allHist.length - 1; i >= 0; i--) {
+    const e = allHist[i];
     const day = e.timestamp.slice(0, 10);
     const last = groups[groups.length - 1];
     if (last && last.day === day) {

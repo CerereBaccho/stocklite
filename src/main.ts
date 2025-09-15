@@ -456,7 +456,21 @@ async function renderHistory(id: string) {
     }
   }
 
-  if (!it) { root.textContent = 'アイテムが見つかりません'; return; }
+  if (!it) {
+    it = {
+      id,
+      name: '不明なアイテム',
+      category: '',
+      qty: 0,
+      threshold: 0,
+      lastRefillAt: '',
+      nextRefillAt: '',
+      createdAt: nowISO(),
+      updatedAt: nowISO(),
+      deleted: false,
+      version: 1,
+    };
+  }
 
   root.append(renderHistoryHeader(it.name));
 

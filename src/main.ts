@@ -420,32 +420,42 @@ async function renderHistory(id: string) {
   let it = items.find(x => x.id === id);
   let allHist = historyForItem(id);
 
+  if (!it && allHist.length) {
+    const last = allHist[allHist.length - 1];
+    const named = items.find(i => i.name === last.itemName);
+    if (named) {
+      updateHistoryItemId(id, named.id, named.name);
+      id = named.id;
+      it = named;
+      allHist = historyForItem(id);
+    } else {
+      it = {
+        id,
+        name: last.itemName || '不明なアイテム',
+        category: '',
+        qty: last.qtyAfter,
+        threshold: 0,
+        lastRefillAt: '',
+        nextRefillAt: '',
+        createdAt: last.timestamp,
+        updatedAt: last.timestamp,
+        deleted: false,
+        version: 1,
+      };
+    }
+  }
+
   if (!it && !allHist.length) {
     const blanks = historyForItem('');
     const match = blanks.find(b => items.some(i => i.name === b.itemName));
     if (match) {
-      it = items.find(i => i.name === match.itemName)!;
-      updateHistoryItemId('', it.id, it.name);
-      allHist = historyForItem(it.id);
+      const target = items.find(i => i.name === match.itemName)!;
+      updateHistoryItemId('', target.id, target.name);
+      it = target;
+      allHist = historyForItem(target.id);
     }
   }
 
-  if (!it && allHist.length) {
-    const last = allHist[allHist.length - 1];
-    it = {
-      id,
-      name: last.itemName || '不明なアイテム',
-      category: '',
-      qty: last.qtyAfter,
-      threshold: 0,
-      lastRefillAt: '',
-      nextRefillAt: '',
-      createdAt: last.timestamp,
-      updatedAt: last.timestamp,
-      deleted: false,
-      version: 1,
-    };
-  }
   if (!it) { root.textContent = 'アイテムが見つかりません'; return; }
 
   root.append(renderHistoryHeader(it.name));

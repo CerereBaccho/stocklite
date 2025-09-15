@@ -40,7 +40,10 @@ export const updateHistoryItemId = (oldId: string, newId: string, name?: string)
   const arr = read();
   let changed = false;
   for (const e of arr) {
-    if (e.itemId === oldId || (!e.itemId && name && e.itemName === name)) {
+    if (
+      e.itemId === oldId ||
+      (oldId === '' && !e.itemId && name && e.itemName === name)
+    ) {
       e.itemId = newId;
       if (name) e.itemName = name;
       changed = true;

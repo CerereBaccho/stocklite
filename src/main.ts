@@ -6,7 +6,10 @@
    - 閲覧(#/) と 編集(#/edit) をシンプルに切替
    ========================= */
 
-if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+// Node.js 環境で型定義がない場合でも `process` を参照できるよう宣言
+declare const process: { env?: Record<string, string | undefined> } | undefined;
+
+if (typeof process === 'undefined' || process?.env?.NODE_ENV !== 'test') {
   await import('./style.css');
 }
 
@@ -397,15 +400,21 @@ function renderHistoryHeader(name: string) {
 
 function drawLine(canvas: HTMLCanvasElement, data: number[], min: number, max: number) {
   const ctx = canvas.getContext('2d');
-  if (!ctx) return;
+  if (!ctx || data.length === 0) return;
   const w = canvas.width;
   const h = canvas.height;
   ctx.clearRect(0, 0, w, h);
+
+  // 値に変化がない場合は線が底に張り付いて見えなくなるため、上下に余白を作る
+  if (min === max) {
+    min -= 1;
+    max += 1;
+  }
   const range = max - min || 1;
-  const stepX = w / (data.length - 1);
+  const stepX = data.length > 1 ? w / (data.length - 1) : 0;
   ctx.beginPath();
   data.forEach((q, i) => {
-    const x = i * stepX;
+    const x = data.length > 1 ? i * stepX : w / 2;
     const y = h - ((q - min) / range) * h;
     if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
   });
@@ -560,7 +569,7 @@ async function main() {
   await route();
 }
 
-if (typeof process === 'undefined' || process.env.NODE_ENV !== 'test') {
+if (typeof process === 'undefined' || process?.env?.NODE_ENV !== 'test') {
   main();
 }
 

@@ -53,6 +53,11 @@ function renderListHeader() {
 }
 
 function renderCard(it: Item) {
+  if (!it.id) {
+    it.id = uuid();
+    it.updatedAt = nowISO();
+    saveItem(it);
+  }
   const need = it.qty <= it.threshold;
   const tag = need
     ? el('span', { className: 'tag danger', textContent: '要補充' })

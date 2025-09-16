@@ -12,11 +12,3 @@ export async function initPushIfNeeded(): Promise<void> {
     serviceWorkerParam: { scope: '/stocklite/' },
   });
 }
-
-// ローカル動作確認用（不要なら呼ばない）
-export function showLocalTest(): void {
-  if (typeof Notification === 'undefined') return;
-  if (Notification.permission === 'granted') {
-    new Notification('テスト通知', { body: 'ローカル通知（この端末）' });
-  }
-}

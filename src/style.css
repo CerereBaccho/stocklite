@@ -6,7 +6,10 @@
 *,
 *::before,
 *::after { box-sizing: border-box; }
-html, body { height: 100%; }
+html,
+body {
+  min-height: 100%;
+}
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0;
@@ -16,11 +19,17 @@ body {
   color: #222;
   background: #f6f7fb;
   overscroll-behavior-y: contain;
+  min-height: 100vh;
+  min-height: var(--app-viewport);
   padding-bottom: 16px;
   padding-bottom: calc(16px + constant(safe-area-inset-bottom));
   padding-bottom: calc(16px + env(safe-area-inset-bottom));
 }
+#app {
+  min-height: inherit;
+}
 :root {
+  --app-viewport: 100vh;
   --surface: #fff;
   --border: #e6e7ef;
   --muted: #6a6f85;
@@ -28,6 +37,11 @@ body {
   --danger: #de3d3d;
   --ok: #0a8f3c;
   --shadow: 0 2px 10px rgba(16,24,40,.06);
+}
+@supports (height: 100dvh) {
+  :root {
+    --app-viewport: 100dvh;
+  }
 }
 
 /* ---- generic ---- */
@@ -257,6 +271,7 @@ body.drawer-open{ overflow:hidden; }
   display:flex;
   flex-direction:column;
   max-height: min(90vh, 720px);
+  max-height: min(calc(var(--app-viewport) * 0.9), 720px);
   padding-bottom: 0;
   padding-bottom: constant(safe-area-inset-bottom);
   padding-bottom: env(safe-area-inset-bottom);

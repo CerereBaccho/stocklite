@@ -17,7 +17,8 @@ body {
   background: #f6f7fb;
   overscroll-behavior-y: contain;
   padding-bottom: 16px;
-  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0));
+  padding-bottom: calc(16px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(16px + env(safe-area-inset-bottom));
 }
 :root {
   --surface: #fff;
@@ -44,7 +45,9 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
   position: sticky; top: 0; z-index: 10;
   background: var(--surface); border-bottom: 1px solid var(--border);
   display:flex; align-items:center; justify-content:space-between;
-  padding: env(safe-area-inset-top, 0) 12px 8px;
+  padding: 0 12px 8px;
+  padding-top: constant(safe-area-inset-top);
+  padding-top: env(safe-area-inset-top);
   gap:10px;
 }
 .headerbar .title{ font-size:18px; font-weight:700; padding-top:6px; }
@@ -99,7 +102,8 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
 /* ---- 編集画面 ---- */
 .edit-panel{
   padding: 8px 8px 18px;
-  padding: 8px 8px calc(18px + env(safe-area-inset-bottom, 0));
+  padding-bottom: calc(18px + constant(safe-area-inset-bottom));
+  padding-bottom: calc(18px + env(safe-area-inset-bottom));
 }
 .edit-list{ display:flex; flex-direction:column; gap:10px; }
 
@@ -254,7 +258,8 @@ body.drawer-open{ overflow:hidden; }
   flex-direction:column;
   max-height: min(90vh, 720px);
   padding-bottom: 0;
-  padding-bottom: env(safe-area-inset-bottom, 0);
+  padding-bottom: constant(safe-area-inset-bottom);
+  padding-bottom: env(safe-area-inset-bottom);
 }
 .drawer-overlay.open .drawer{ transform: translateY(0); }
 

@@ -205,12 +205,6 @@ select.ed-cat{
 
 .headerbar + .offline{ top: 56px; }
 
-/* ---- 履歴カード ---- */
-.history-note{ margin-bottom:8px; font-size:14px; color:var(--muted); }
-.history-note.csv{ margin-top:6px; font-size:12px; }
-.history-actions{ margin-top:12px; display:flex; gap:8px; }
-.history canvas{ width:100%; height:200px; }
-
 /* ---- ドロワー ---- */
 body.drawer-open{ overflow:hidden; }
 

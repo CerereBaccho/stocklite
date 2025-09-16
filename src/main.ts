@@ -16,9 +16,6 @@ import { initPushIfNeeded } from './push/onesignal';
 import Chart from 'chart.js/auto';
 import {
   recordHistory,
-  getDailyNet,
-  exportHistoryCSV,
-  clearHistory,
   queryByItem,
   dailyNetByItem,
   exportItemHistoryCSV,
@@ -174,20 +171,23 @@ function openItemHistoryDrawer(item: Item) {
     tabButtons.csv,
   );
 
-  const graphPanel = el('div', { className: 'drawer-panel active', dataset: { panel: 'graph' } });
+  const graphPanel = el('div', { className: 'drawer-panel active' }) as HTMLDivElement;
+  graphPanel.dataset.panel = 'graph';
   const graphLoading = el('div', { className: 'drawer-loading', textContent: '読み込み中…' });
   const graphEmpty = el('div', { className: 'drawer-empty hide', textContent: '直近90日に変更はありません' });
   const graphCanvas = el('canvas', { className: 'drawer-chart hide' }) as HTMLCanvasElement;
   graphPanel.append(graphLoading, graphEmpty, graphCanvas);
 
-  const historyPanel = el('div', { className: 'drawer-panel', dataset: { panel: 'history' } });
+  const historyPanel = el('div', { className: 'drawer-panel' }) as HTMLDivElement;
+  historyPanel.dataset.panel = 'history';
   const historyList = el('ul', { className: 'event-list' });
   const historyLoading = el('div', { className: 'drawer-loading hide', textContent: '読み込み中…' });
   const historyEmpty = el('div', { className: 'drawer-empty hide', textContent: '履歴はまだありません' });
   const loadMoreBtn = el('button', { className: 'btn ghost load-more hide', type: 'button', textContent: 'さらに読み込む' }) as HTMLButtonElement;
   historyPanel.append(historyList, historyLoading, historyEmpty, loadMoreBtn);
 
-  const csvPanel = el('div', { className: 'drawer-panel', dataset: { panel: 'csv' } });
+  const csvPanel = el('div', { className: 'drawer-panel' }) as HTMLDivElement;
+  csvPanel.dataset.panel = 'csv';
   csvPanel.append(
     el('p', { className: 'drawer-note', textContent: 'このアイテムの履歴をCSVで保存（過去1年）' }),
     el('button', { className: 'btn primary', type: 'button', textContent: 'CSVを保存' }),
@@ -468,52 +468,6 @@ function renderCard(it: Item) {
   return el('div', { className: 'card' }, row1, row2, row3);
 }
 
-async function renderHistoryCard() {
-  const wrap = el('div', { className: 'card history' });
-  wrap.append(el('div', { className: 'history-note', textContent: '90日間の増減（1日あたりの合計）' }));
-  const canvas = el('canvas') as HTMLCanvasElement;
-  wrap.append(canvas);
-  const actions = el(
-    'div',
-    { className: 'history-actions' },
-    el('button', { className: 'btn', id: 'btn-csv', textContent: 'CSV保存' }),
-    el('button', { className: 'btn danger', id: 'btn-clear-history', textContent: '履歴を全削除' }),
-  );
-  wrap.append(actions);
-  wrap.append(el('div', { className: 'history-note csv', textContent: '1年分の履歴を書き出します' }));
-
-  const daily = await getDailyNet(90);
-  const labels = daily.map(d => d.date.slice(5));
-  const data = daily.map(d => d.value);
-  new Chart(canvas, {
-    type: 'line',
-    data: { labels, datasets: [{ data, borderColor: '#1a73e8', fill: false }] },
-    options: {
-      plugins: {
-        legend: { display: false },
-        tooltip: {
-          callbacks: {
-            label: ctx => `${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y}`,
-          },
-        },
-      },
-      scales: { y: { beginAtZero: true } },
-    },
-  });
-
-  $('#btn-csv', wrap)?.addEventListener('click', () => {
-    void exportHistoryCSV();
-  });
-  $('#btn-clear-history', wrap)?.addEventListener('click', async () => {
-    if (confirm('履歴を全削除しますか？')) {
-      await clearHistory();
-      await renderList();
-    }
-  });
-
-  return wrap;
-}
-
 async function renderList() {
   const root = $('#app')!;
   root.textContent = '';
@@ -532,8 +486,6 @@ async function renderList() {
 
     for (const it of items) root.append(renderCard(it));
   }
-
-  root.append(await renderHistoryCard());
 
   $('#btn-to-edit')?.addEventListener('click', () => { location.hash = '#/edit'; });
 }

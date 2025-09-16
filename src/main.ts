@@ -129,6 +129,88 @@ const formatDayHeading = (dateKey: string): string => {
 const formatSigned = (value: number): string =>
   value >= 0 ? `＋${value}` : `−${Math.abs(value)}`;
 
+const setupViewportUnit = () => {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return;
+  }
+
+  const supportsDynamicViewport =
+    typeof CSS !== 'undefined' && typeof CSS.supports === 'function' && CSS.supports('height: 100dvh');
+
+  const displayModeQuery =
+    typeof window.matchMedia === 'function'
+      ? window.matchMedia(
+          '(display-mode: fullscreen), (display-mode: standalone), (display-mode: minimal-ui), (display-mode: window-controls-overlay)',
+        )
+      : null;
+  const nav = navigator as Navigator & { standalone?: boolean };
+
+  const shouldExtendViewport = () =>
+    !supportsDynamicViewport || Boolean(displayModeQuery?.matches || nav?.standalone);
+
+  let extendViewport = shouldExtendViewport();
+  let rafId = 0;
+  let lastApplied = 0;
+
+  const readViewportHeight = () => {
+    const { documentElement } = document;
+    const heights: number[] = [window.innerHeight, documentElement?.clientHeight ?? 0];
+    const viewport = window.visualViewport;
+    if (extendViewport && viewport) {
+      const vvHeight = Math.round(viewport.height);
+      if (vvHeight > 0) heights.push(vvHeight);
+      if (typeof viewport.offsetTop === 'number') {
+        const vvWithOffsets = Math.round(viewport.height + viewport.offsetTop);
+        if (vvWithOffsets > 0) heights.push(vvWithOffsets);
+      }
+    }
+    const validHeights = heights.filter(h => Number.isFinite(h) && h > 0);
+    if (!validHeights.length) {
+      return 0;
+    }
+    return Math.max(...validHeights);
+  };
+
+  const applyViewportHeight = () => {
+    rafId = 0;
+    extendViewport = shouldExtendViewport();
+    const nextHeight = readViewportHeight();
+    if (nextHeight && nextHeight !== lastApplied) {
+      lastApplied = nextHeight;
+      document.documentElement.style.setProperty('--app-viewport', `${nextHeight}px`);
+    }
+  };
+
+  const queueViewportHeight = () => {
+    if (rafId) {
+      return;
+    }
+    rafId = window.requestAnimationFrame(applyViewportHeight);
+  };
+
+  applyViewportHeight();
+
+  const events: (keyof WindowEventMap)[] = ['resize', 'orientationchange', 'pageshow'];
+  for (const evt of events) {
+    window.addEventListener(evt, queueViewportHeight);
+  }
+
+  const visualViewport = window.visualViewport;
+  visualViewport?.addEventListener('resize', queueViewportHeight);
+  visualViewport?.addEventListener('scroll', queueViewportHeight);
+
+  if (displayModeQuery) {
+    const onDisplayModeChange = () => queueViewportHeight();
+    if (typeof displayModeQuery.addEventListener === 'function') {
+      displayModeQuery.addEventListener('change', onDisplayModeChange);
+    } else if (typeof displayModeQuery.addListener === 'function') {
+      displayModeQuery.addListener(onDisplayModeChange);
+    }
+  }
+};
+
+setupViewportUnit();
+
 const deriveDailyQtySeries = (
   series: { net: number }[],
   latestQty: number,

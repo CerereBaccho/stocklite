@@ -109,6 +109,19 @@ const formatDayHeading = (dateKey: string): string => {
 const formatSigned = (value: number): string =>
   value >= 0 ? `＋${value}` : `−${Math.abs(value)}`;
 
+const deriveDailyQtySeries = (
+  series: { net: number }[],
+  latestQty: number,
+): number[] => {
+  const qtyValues = new Array<number>(series.length);
+  let runningQty = latestQty;
+  for (let i = series.length - 1; i >= 0; i--) {
+    qtyValues[i] = runningQty;
+    runningQty -= series[i]?.net ?? 0;
+  }
+  return qtyValues;
+};
+
 const describeHistoryEvent = (evt: HistoryEvent): string => {
   const stockSpan = `在庫 ${evt.qtyBefore}→${evt.qtyAfter}`;
   const changes = evt.meta?.changes ?? {};
@@ -340,16 +353,16 @@ function openItemHistoryDrawer(item: Item) {
   const loadGraph = async () => {
     graphLoaded = true;
     try {
-      const data = await dailyNetByItem(item.id, { days: 90, tz: 'local' });
-      const allZero = data.every(d => d.net === 0);
+      const netSeries = await dailyNetByItem(item.id, { days: 90, tz: 'local' });
+      const allZero = netSeries.every(d => d.net === 0);
       graphLoading.classList.add('hide');
       if (allZero) {
         graphEmpty.classList.remove('hide');
         return;
       }
       graphCanvas.classList.remove('hide');
-      const labels = data.map(d => d.date);
-      const values = data.map(d => d.net);
+      const labels = netSeries.map(d => d.date);
+      const values = deriveDailyQtySeries(netSeries, item.qty);
       graphChart = new Chart(graphCanvas, {
         type: 'line',
         data: { labels, datasets: [{ data: values, borderColor: '#1a73e8', tension: 0.2, fill: false }] },
@@ -358,7 +371,11 @@ function openItemHistoryDrawer(item: Item) {
             legend: { display: false },
             tooltip: {
               callbacks: {
-                label: ctx => `${ctx.label}: ${ctx.parsed.y >= 0 ? '+' : ''}${ctx.parsed.y}`,
+                label: ctx => {
+                  const net = netSeries[ctx.dataIndex]?.net ?? 0;
+                  const deltaText = net === 0 ? '' : `（前日比${net > 0 ? '+' : ''}${net}）`;
+                  return `${ctx.label}: ${ctx.parsed.y}個${deltaText}`;
+                },
               },
             },
           },

@@ -2,6 +2,11 @@ import { openDB, type DBSchema, type IDBPDatabase } from 'idb';
 
 export type HistoryEventType = 'inc' | 'dec' | 'edit' | 'create' | 'delete' | 'restore';
 
+interface MetaChange<T> {
+  before: T;
+  after: T;
+}
+
 export interface HistoryEvent {
   id: string;
   itemId: string;
@@ -12,7 +17,14 @@ export interface HistoryEvent {
   name: string;
   category: string;
   at: string; // ISO8601
-  meta?: { source?: 'user' | 'migration' | 'sync' };
+  meta?: {
+    source?: 'user' | 'migration' | 'sync';
+    changes?: {
+      name?: MetaChange<string>;
+      category?: MetaChange<string>;
+      threshold?: MetaChange<number>;
+    };
+  };
 }
 
 interface HistDB extends DBSchema {
@@ -41,6 +53,20 @@ const genId = (): string =>
   (typeof crypto !== 'undefined' && 'randomUUID' in crypto)
     ? crypto.randomUUID()
     : 'h-' + Math.random().toString(36).slice(2) + '-' + Date.now();
+
+const CURSOR_SEPARATOR = '::';
+
+const encodeCursor = (evt: HistoryEvent): string => `${evt.at}${CURSOR_SEPARATOR}${evt.id}`;
+
+const decodeCursor = (cursor?: string): { at: string; id: string } | null => {
+  if (!cursor) return null;
+  const idx = cursor.indexOf(CURSOR_SEPARATOR);
+  if (idx === -1) return null;
+  const at = cursor.slice(0, idx);
+  const id = cursor.slice(idx + CURSOR_SEPARATOR.length);
+  if (!at || !id) return null;
+  return { at, id };
+};
 
 export const recordHistory = async (
   evt: Omit<HistoryEvent, 'id' | 'at'> & { at?: string }
@@ -159,4 +185,158 @@ export const exportHistoryCSV = async (): Promise<void> => {
 export const clearHistory = async (): Promise<void> => {
   const db = await dbPromise;
   await db.clear(STORE);
+};
+
+export interface QueryByItemOptions {
+  from?: string;
+  to?: string;
+  limit?: number;
+  cursor?: string;
+}
+
+export interface QueryByItemResult {
+  events: HistoryEvent[];
+  nextCursor: string | null;
+}
+
+export const queryByItem = async (
+  itemId: string,
+  { from, to, limit = 50, cursor }: QueryByItemOptions = {}
+): Promise<QueryByItemResult> => {
+  const db = await dbPromise;
+  const tx = db.transaction(STORE, 'readonly');
+  const idx = tx.store.index('byItemAt');
+
+  const lowerAt = from ?? '';
+  const upperAt = to ?? '\uffff';
+  const range = IDBKeyRange.bound([itemId, lowerAt], [itemId, upperAt]);
+
+  const cursorInfo = decodeCursor(cursor);
+  let skipAt = cursorInfo?.at ?? null;
+  let skipId = cursorInfo?.id ?? null;
+
+  const events: HistoryEvent[] = [];
+  let hasMore = false;
+
+  let cur = await idx.openCursor(range, 'prev');
+  while (cur) {
+    const value = cur.value;
+
+    if (skipAt) {
+      if (value.at > skipAt) {
+        cur = await cur.continue();
+        continue;
+      }
+      if (value.at === skipAt && (!skipId || value.id >= skipId)) {
+        cur = await cur.continue();
+        continue;
+      }
+      skipAt = null;
+      skipId = null;
+    }
+
+    if (events.length < limit) {
+      events.push(value);
+      cur = await cur.continue();
+      continue;
+    }
+
+    hasMore = true;
+    break;
+  }
+
+  await tx.done;
+
+  return {
+    events,
+    nextCursor: hasMore && events.length ? encodeCursor(events[events.length - 1]) : null,
+  };
+};
+
+const localDayKey = (d: Date): string => {
+  const year = d.getFullYear();
+  const month = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const shouldCountForNet = (type: HistoryEventType): boolean =>
+  type === 'inc' || type === 'dec' || type === 'edit';
+
+export const dailyNetByItem = async (
+  itemId: string,
+  { days, tz }: { days: number; tz: 'local' }
+): Promise<{ date: string; net: number }[]> => {
+  if (tz !== 'local') throw new Error('Unsupported timezone');
+
+  const db = await dbPromise;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const start = new Date(today);
+  start.setDate(start.getDate() - (days - 1));
+
+  const events = await db.getAllFromIndex(
+    STORE,
+    'byItemAt',
+    IDBKeyRange.bound([itemId, start.toISOString()], [itemId, new Date().toISOString()])
+  );
+
+  const bucket = new Map<string, number>();
+  for (const evt of events) {
+    if (!shouldCountForNet(evt.type)) continue;
+    const key = localDayKey(new Date(evt.at));
+    bucket.set(key, (bucket.get(key) ?? 0) + evt.delta);
+  }
+
+  const out: { date: string; net: number }[] = [];
+  const cur = new Date(start);
+  for (let i = 0; i < days; i++) {
+    const key = localDayKey(cur);
+    out.push({ date: key, net: bucket.get(key) ?? 0 });
+    cur.setDate(cur.getDate() + 1);
+  }
+
+  return out;
+};
+
+export const exportItemHistoryCSV = async (
+  itemId: string,
+  itemSlug: string
+): Promise<void> => {
+  const db = await dbPromise;
+  const cutoff = new Date(Date.now() - 365 * 24 * 60 * 60 * 1000).toISOString();
+  const events = await db.getAllFromIndex(
+    STORE,
+    'byItemAt',
+    IDBKeyRange.bound([itemId, cutoff], [itemId, '\uffff'])
+  );
+  events.sort((a, b) => a.at.localeCompare(b.at));
+
+  const lines = events.map(e =>
+    [
+      e.at,
+      e.itemId,
+      csvEscape(e.name),
+      csvEscape(e.category),
+      e.type,
+      String(e.delta),
+      String(e.qtyBefore),
+      String(e.qtyAfter),
+    ].join(',')
+  );
+
+  const bom = '\ufeff';
+  const header = 'timestamp,itemId,name,category,type,delta,qty_before,qty_after';
+  const csv = bom + [header, ...lines].join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const now = new Date();
+  const fn = `stocklite-${itemSlug}-history-${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(
+    now.getDate()
+  ).padStart(2, '0')}.csv`;
+  a.href = url;
+  a.download = fn;
+  a.click();
+  URL.revokeObjectURL(url);
 };

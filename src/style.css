@@ -75,7 +75,17 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
 .card .item-header{ display:flex; align-items:center; gap:8px; width:100%; }
 .card .item-header .item-name{ flex:1; min-width:0; }
 .card .history-btn{ height:32px; padding:0 12px; font-size:14px; border-radius:10px; }
-.tag{ font-size:12px; padding:2px 8px; border-radius:999px; background:#eef2ff; color:#3a49a1; border:1px solid #cfd7ff; }
+.tag{
+  display: inline-flex;
+  align-items: center;
+  font-size:12px;
+  padding:2px 8px;
+  border-radius:999px;
+  background:#eef2ff;
+  color:#3a49a1;
+  border:1px solid #cfd7ff;
+  white-space: nowrap;
+}
 .tag.danger{ background:#ffecec; color:#b61c1c; border-color:#ffc7c7; }
 .item-name{ font-weight:700; font-size:18px; }
 .item-name.no-tag{ margin-left:0; }

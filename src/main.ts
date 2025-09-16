@@ -780,10 +780,6 @@ async function renderEdit() {
     btnSaveAll.addEventListener('click', async () => {
       if (btnSaveAll.disabled) return;
 
-      const originalLabel = btnSaveAll.textContent ?? '';
-      btnSaveAll.disabled = true;
-      btnSaveAll.textContent = '保存中…';
-
       const itemMap = new Map(items.map(it => [it.id, it]));
       const rows = Array.from(root.querySelectorAll<HTMLDivElement>('.edit-row[data-item-id]'));
       const updates: { original: Item; updated: Item; changeMeta?: ChangeMeta }[] = [];
@@ -824,12 +820,19 @@ async function renderEdit() {
       }
 
       if (!updates.length) {
-        if (btnSaveAll.isConnected) {
-          btnSaveAll.textContent = originalLabel;
-          btnSaveAll.disabled = false;
-        }
+        location.hash = '';
         return;
       }
+
+      const originalLabel = btnSaveAll.textContent ?? '';
+      const restoreButtonState = () => {
+        if (!btnSaveAll.isConnected) return;
+        btnSaveAll.textContent = originalLabel;
+        btnSaveAll.disabled = false;
+      };
+
+      btnSaveAll.disabled = true;
+      btnSaveAll.textContent = '保存中…';
 
       try {
         for (const { original, updated, changeMeta } of updates) {
@@ -850,14 +853,12 @@ async function renderEdit() {
       } catch (err) {
         console.error(err);
         alert('保存に失敗しました');
-        if (btnSaveAll.isConnected) {
-          btnSaveAll.textContent = originalLabel;
-          btnSaveAll.disabled = false;
-        }
+        restoreButtonState();
         return;
       }
 
-      await renderEdit();
+      restoreButtonState();
+      location.hash = '';
     });
   }
 

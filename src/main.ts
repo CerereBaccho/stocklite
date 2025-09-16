@@ -75,14 +75,35 @@ const slugify = (name: string, fallback: string): string => {
   return ascii || fallback;
 };
 
-const formatDateTime = (iso: string): string => {
+const WEEKDAYS_JA = ['日', '月', '火', '水', '木', '金', '土'] as const;
+
+const formatTime = (iso: string): string => {
+  const d = new Date(iso);
+  const hh = String(d.getHours()).padStart(2, '0');
+  const mm = String(d.getMinutes()).padStart(2, '0');
+  return `${hh}:${mm}`;
+};
+
+const toLocalDateKey = (iso: string): string => {
   const d = new Date(iso);
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
-  const hh = String(d.getHours()).padStart(2, '0');
-  const mm = String(d.getMinutes()).padStart(2, '0');
-  return `${y}/${m}/${day} ${hh}:${mm}`;
+  return `${y}-${m}-${day}`;
+};
+
+const formatDayHeading = (dateKey: string): string => {
+  const [yStr, mStr, dStr] = dateKey.split('-');
+  const y = Number(yStr);
+  const m = Number(mStr);
+  const d = Number(dStr);
+  if (Number.isNaN(y) || Number.isNaN(m) || Number.isNaN(d)) {
+    return dateKey.replace(/-/g, '/');
+  }
+  const weekday = WEEKDAYS_JA[new Date(y, m - 1, d).getDay()] ?? '';
+  const mm = String(m).padStart(2, '0');
+  const dd = String(d).padStart(2, '0');
+  return `${y}/${mm}/${dd}${weekday ? `（${weekday}）` : ''}`;
 };
 
 const formatSigned = (value: number): string =>
@@ -122,7 +143,7 @@ const describeHistoryEvent = (evt: HistoryEvent): string => {
 const renderHistoryListItem = (evt: HistoryEvent): HTMLLIElement => {
   const row = el('li', { className: 'event-row' });
   row.append(
-    el('div', { className: 'event-time', textContent: formatDateTime(evt.at) }),
+    el('div', { className: 'event-time', textContent: formatTime(evt.at) }),
     el('div', { className: 'event-desc', textContent: describeHistoryEvent(evt) }),
   );
   return row;
@@ -180,11 +201,43 @@ function openItemHistoryDrawer(item: Item) {
 
   const historyPanel = el('div', { className: 'drawer-panel' }) as HTMLDivElement;
   historyPanel.dataset.panel = 'history';
-  const historyList = el('ul', { className: 'event-list' });
+  const historyList = el('ul', { className: 'event-list' }) as HTMLUListElement;
   const historyLoading = el('div', { className: 'drawer-loading hide', textContent: '読み込み中…' });
   const historyEmpty = el('div', { className: 'drawer-empty hide', textContent: '履歴はまだありません' });
   const loadMoreBtn = el('button', { className: 'btn ghost load-more hide', type: 'button', textContent: 'さらに読み込む' }) as HTMLButtonElement;
   historyPanel.append(historyList, historyLoading, historyEmpty, loadMoreBtn);
+
+  type HistoryDaySection = {
+    container: HTMLLIElement;
+    list: HTMLUListElement;
+    totalEl: HTMLSpanElement;
+    net: number;
+  };
+
+  const daySections = new Map<string, HistoryDaySection>();
+
+  const updateDayTotal = (section: HistoryDaySection) => {
+    section.totalEl.textContent = `合計 ${formatSigned(section.net)}`;
+    section.totalEl.classList.toggle('positive', section.net > 0);
+    section.totalEl.classList.toggle('negative', section.net < 0);
+  };
+
+  const ensureDaySection = (key: string): HistoryDaySection => {
+    let section = daySections.get(key);
+    if (!section) {
+      const header = el('div', { className: 'event-day-header' });
+      const dateEl = el('span', { className: 'event-day-date', textContent: formatDayHeading(key) });
+      const totalEl = el('span', { className: 'event-day-total' }) as HTMLSpanElement;
+      header.append(dateEl, totalEl);
+      const list = el('ul', { className: 'event-day-events' }) as HTMLUListElement;
+      const container = el('li', { className: 'event-day' }, header, list) as HTMLLIElement;
+      section = { container, list, totalEl, net: 0 };
+      updateDayTotal(section);
+      daySections.set(key, section);
+      historyList.append(container);
+    }
+    return section;
+  };
 
   const csvPanel = el('div', { className: 'drawer-panel' }) as HTMLDivElement;
   csvPanel.dataset.panel = 'csv';
@@ -329,25 +382,37 @@ function openItemHistoryDrawer(item: Item) {
     }
   };
 
+  const contributesToNet = (evt: HistoryEvent): boolean =>
+    evt.type === 'inc' || evt.type === 'dec' || evt.type === 'edit';
+
   const loadHistory = async () => {
     if (historyLoadingState) return;
     toggleHistoryLoading(true);
     try {
-      if (!historyCursor) {
+      const isInitialLoad = !historyLoaded && historyCursor === null;
+      if (isInitialLoad) {
         historyEmpty.textContent = '履歴はまだありません';
       }
       const res = await queryByItem(item.id, {
         limit: HISTORY_PAGE_SIZE,
         cursor: historyCursor ?? undefined,
       });
-      if (!historyCursor && res.events.length === 0) {
-        historyEmpty.classList.remove('hide');
-      } else {
+
+      if (res.events.length > 0) {
         historyEmpty.classList.add('hide');
-        const frag = document.createDocumentFragment();
-        for (const evt of res.events) frag.append(renderHistoryListItem(evt));
-        historyList.append(frag);
+        for (const evt of res.events) {
+          const dayKey = toLocalDateKey(evt.at);
+          const section = ensureDaySection(dayKey);
+          section.list.append(renderHistoryListItem(evt));
+          if (contributesToNet(evt)) {
+            section.net += evt.delta;
+          }
+          updateDayTotal(section);
+        }
+      } else if (isInitialLoad && daySections.size === 0) {
+        historyEmpty.classList.remove('hide');
       }
+
       historyCursor = res.nextCursor;
       if (historyCursor) {
         loadMoreBtn.classList.remove('hide');

@@ -22,6 +22,26 @@ import {
 } from './storage/history';
 import type { HistoryEvent } from './storage/history';
 
+type ChangeMeta = NonNullable<NonNullable<HistoryEvent['meta']>['changes']>;
+
+const buildChangeMeta = (before: Item, after: Item): ChangeMeta | undefined => {
+  const changes: ChangeMeta = {};
+  let hasChanges = false;
+  if (before.name !== after.name) {
+    changes.name = { before: before.name, after: after.name };
+    hasChanges = true;
+  }
+  if (before.category !== after.category) {
+    changes.category = { before: before.category, after: after.category };
+    hasChanges = true;
+  }
+  if (before.threshold !== after.threshold) {
+    changes.threshold = { before: before.threshold, after: after.threshold };
+    hasChanges = true;
+  }
+  return hasChanges ? changes : undefined;
+};
+
 // ---------- 小ユーティリティ ----------
 const $ = <T extends HTMLElement>(sel: string, root: ParentNode = document) =>
   root.querySelector(sel) as T | null;
@@ -577,6 +597,7 @@ function renderEditHeader() {
   return el('div', { className: 'headerbar' },
     el('div', { className: 'title', textContent: '編集' }),
     el('div', { className: 'header-actions' },
+      el('button', { className: 'btn primary', id: 'btn-save-all', textContent: '一括保存' }),
       el('button', { className: 'btn', id: 'btn-done', textContent: '完了' }),
     ),
   );
@@ -638,60 +659,17 @@ function renderEditRow(it: Item) {
   const qtyI  = numberInput(it.qty, 0);
   const thI   = numberInput(it.threshold, 0);
 
-  const btnSave = el('button', { className: 'btn save', textContent: '保存' });
-  const btnDel  = el('button', { className: 'btn danger del', textContent: '削除' });
+  const btnDel  = el('button', { className: 'btn danger', textContent: '削除' });
 
   const row = el('div', { className: 'edit-row' },
     fieldWrap('名前', nameI, 'ed-name'),
     fieldWrap('カテゴリ', catS, 'ed-cat'),
     fieldWrap('個数', qtyI, 'ed-qty'),
     fieldWrap('閾値', thI, 'ed-th', 'この数以下で要補充'),
-    el('div', { className: 'save' }, btnSave),
-    el('div', { className: 'del'  }, btnDel),
+    el('div', { className: 'ed-actions' }, btnDel),
   );
 
-  btnSave.addEventListener('click', async () => {
-    const updated: Item = {
-      ...it,
-      name: (nameI as HTMLInputElement).value.trim(),
-      category: (catS as HTMLSelectElement).value as Item['category'],
-      qty: parseInt((qtyI as HTMLInputElement).value || '0', 10),
-      threshold: parseInt((thI as HTMLInputElement).value || '0', 10),
-      updatedAt: nowISO(),
-    };
-    addCategory(updated.category);
-    await saveItem(updated);
-    if (
-      updated.qty !== it.qty ||
-      updated.name !== it.name ||
-      updated.category !== it.category ||
-      updated.threshold !== it.threshold
-    ) {
-      type ChangeMeta = NonNullable<NonNullable<HistoryEvent['meta']>['changes']>;
-      const changeMeta: ChangeMeta = {};
-      if (updated.name !== it.name) {
-        changeMeta.name = { before: it.name, after: updated.name };
-      }
-      if (updated.category !== it.category) {
-        changeMeta.category = { before: it.category, after: updated.category };
-      }
-      if (updated.threshold !== it.threshold) {
-        changeMeta.threshold = { before: it.threshold, after: updated.threshold };
-      }
-      const meta = Object.keys(changeMeta).length ? { changes: changeMeta } : undefined;
-      void recordHistory({
-        itemId: it.id,
-        type: 'edit',
-        delta: updated.qty - it.qty,
-        qtyBefore: it.qty,
-        qtyAfter: updated.qty,
-        name: updated.name,
-        category: updated.category,
-        meta,
-      });
-    }
-    await renderEdit();
-  });
+  row.dataset.itemId = it.id;
 
   btnDel.addEventListener('click', async () => {
     await removeItem(it.id);
@@ -724,8 +702,7 @@ function renderAddRow() {
     fieldWrap('カテゴリ',     catS,  'ed-cat'),
     fieldWrap('個数',         qtyI,  'ed-qty'),
     fieldWrap('閾値',         thI,  'ed-th', 'この数以下で要補充'),
-    el('div', { className: 'save' }, btnAdd),
-    el('div', { className: 'del'  }, btnClear),
+    el('div', { className: 'ed-actions' }, btnAdd, btnClear),
   );
 
   btnAdd.addEventListener('click', async () => {
@@ -796,6 +773,93 @@ async function renderEdit() {
         : null,
     ),
   );
+
+  const btnSaveAll = $('#btn-save-all') as HTMLButtonElement | null;
+  if (btnSaveAll) {
+    btnSaveAll.disabled = items.length === 0;
+    btnSaveAll.addEventListener('click', async () => {
+      if (btnSaveAll.disabled) return;
+
+      const originalLabel = btnSaveAll.textContent ?? '';
+      btnSaveAll.disabled = true;
+      btnSaveAll.textContent = '保存中…';
+
+      const itemMap = new Map(items.map(it => [it.id, it]));
+      const rows = Array.from(root.querySelectorAll<HTMLDivElement>('.edit-row[data-item-id]'));
+      const updates: { original: Item; updated: Item; changeMeta?: ChangeMeta }[] = [];
+
+      for (const row of rows) {
+        const id = row.dataset.itemId;
+        if (!id) continue;
+        const original = itemMap.get(id);
+        if (!original) continue;
+
+        const nameEl = row.querySelector<HTMLInputElement>('.ed-name input');
+        const catEl = row.querySelector<HTMLSelectElement>('.ed-cat select');
+        const qtyEl = row.querySelector<HTMLInputElement>('.ed-qty input');
+        const thEl = row.querySelector<HTMLInputElement>('.ed-th input');
+        if (!nameEl || !catEl || !qtyEl || !thEl) continue;
+
+        const qtyParsed = parseInt(qtyEl.value || '0', 10);
+        const thresholdParsed = parseInt(thEl.value || '0', 10);
+        const updated: Item = {
+          ...original,
+          name: nameEl.value.trim(),
+          category: catEl.value as Item['category'],
+          qty: Number.isNaN(qtyParsed) ? 0 : qtyParsed,
+          threshold: Number.isNaN(thresholdParsed) ? 0 : thresholdParsed,
+          updatedAt: nowISO(),
+        };
+
+        const changed =
+          updated.name !== original.name ||
+          updated.category !== original.category ||
+          updated.qty !== original.qty ||
+          updated.threshold !== original.threshold;
+
+        if (!changed) continue;
+
+        const changeMeta = buildChangeMeta(original, updated);
+        updates.push({ original, updated, changeMeta });
+      }
+
+      if (!updates.length) {
+        if (btnSaveAll.isConnected) {
+          btnSaveAll.textContent = originalLabel;
+          btnSaveAll.disabled = false;
+        }
+        return;
+      }
+
+      try {
+        for (const { original, updated, changeMeta } of updates) {
+          addCategory(updated.category);
+          await saveItem(updated);
+          const meta = changeMeta ? { changes: changeMeta } : undefined;
+          void recordHistory({
+            itemId: original.id,
+            type: 'edit',
+            delta: updated.qty - original.qty,
+            qtyBefore: original.qty,
+            qtyAfter: updated.qty,
+            name: updated.name,
+            category: updated.category,
+            meta,
+          });
+        }
+      } catch (err) {
+        console.error(err);
+        alert('保存に失敗しました');
+        if (btnSaveAll.isConnected) {
+          btnSaveAll.textContent = originalLabel;
+          btnSaveAll.disabled = false;
+        }
+        return;
+      }
+
+      await renderEdit();
+    });
+  }
 
   $('#btn-done')?.addEventListener('click', () => { location.hash = ''; });
 }

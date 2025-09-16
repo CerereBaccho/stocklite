@@ -119,17 +119,17 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
     "name name"
     "cat  cat"
     "qty  th"
-    "save del";
+    "act  act";
   grid-template-columns: 1fr 1fr;
 }
 
 /* 広い画面では横一列 */
 @media (min-width: 560px) {
-  .edit-head{ display:grid; grid-template-columns: 1fr 160px 100px 100px 110px 110px; gap:8px; }
+  .edit-head{ display:grid; grid-template-columns: 1fr 160px 100px 100px 180px; gap:8px; }
   .edit-head > span{ padding: 0 4px; }
   .edit-row{
-    grid-template-areas: "name cat qty th save del";
-    grid-template-columns: 1fr 160px 100px 100px 110px 110px;
+    grid-template-areas: "name cat qty th act";
+    grid-template-columns: 1fr 160px 100px 100px 180px;
     align-items:center;
   }
 }
@@ -152,8 +152,13 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
 .ed-qty { grid-area:qty; }
 .ed-th  { grid-area:th; }
 
-.edit-row .save{ grid-area:save; }
-.edit-row .del { grid-area:del; }
+.ed-actions{
+  grid-area:act;
+  display:flex;
+  justify-content:flex-end;
+  gap:8px;
+  flex-wrap:wrap;
+}
 
 .edit-row input,
 .edit-row select{
@@ -177,13 +182,14 @@ h2.cat { margin: 18px 12px 8px; font-size: 20px; letter-spacing: .02em; }
     "name name"
     "cat  cat"
     "qty  th"
-    "add  clear";
+    "act  act";
   background:#f9fbff;
   border-style:dashed;
 }
 
-.edit-row.add .save{ grid-area:add; }
-.edit-row.add .del { grid-area:clear; }
+.edit-row.add .ed-actions{
+  justify-content:flex-end;
+}
 
 .section-title{
   margin: 8px 4px;
